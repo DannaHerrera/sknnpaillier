@@ -1,0 +1,2 @@
+n,h,k,m,key_bits,repeticiones,query_time_s,query_std_s,query_min_s,query_max_s
+10,7,10,6,1024,35,31.07954842000119,1.832632811932522,26.29034030000912,36.14516129999538

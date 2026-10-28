@@ -1,0 +1,2 @@
+consulta,etiqueta_real,prediccion_paillier,correcta,prediccion_mayoria,correcta_mayoria,prediccion_ponderada,correcta_ponderada,indice_dataset_consulta,ids_sknn,distancias_cuadradas,tiempo_consulta_cifrada_s,tiempo_descifrado_final_s,distancias_evaluadas,hojas_totales,hojas_iniciales,hojas_adicionales,distancias_coinciden,topk_correcto,orden_correcto
+1,T,B,0,B,0,B,0,7118,1 3 8 5 2 6 0 9 7 4,9 19 43 47 50 50 54 83 89 127,18.659364299994195,1.4605628999997862,10,10,1,9,True,True,True

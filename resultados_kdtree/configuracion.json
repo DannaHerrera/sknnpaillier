@@ -1,0 +1,9 @@
+{
+  "origen": "C:\\Users\\danna\\OneDrive\\Escritorio\\Tesis\\4toCuatri\\pailier\\data\\processed\\roads_points_int.csv",
+  "capacidad_hoja": 16,
+  "semilla": 42,
+  "repeticiones": 3,
+  "aumento_sintetico": false,
+  "fecha": "2026-10-11T22:36:51",
+  "nota": "Se mide solo la construccion del indice de hojas en claro; no el cifrado, envio a nube ni consultas."
+}

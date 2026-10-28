@@ -1,0 +1,3 @@
+query_number,plaintext_ids,paillier_ids,same_order,same_records,same_distances,recall_at_k,jaccard_at_k,rank_agreement
+1,26 43 14 29 15,26 43 14 29 15,True,True,True,1.0,1.0,1.0
+2,8 28 36 7 0,8 28 36 7 0,True,True,True,1.0,1.0,1.0

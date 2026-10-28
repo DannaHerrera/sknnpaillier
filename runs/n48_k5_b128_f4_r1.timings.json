@@ -1,0 +1,28 @@
+{
+  "stages": {
+    "key_generation_s": 0.006564252999993414,
+    "dataset_load_s": 0.0027024400000073,
+    "database_prepare_s": 8.512999997378756e-06,
+    "query_prepare_s": 9.907999999825279e-05,
+    "outsourcing_s": 0.008082285000000411,
+    "queries_and_validation_s": 0.13037836700000582
+  },
+  "queries": [
+    {
+      "query": 1,
+      "encrypted_query_s": 0.07552510200000029,
+      "reference_s": 0.0001285339999981261,
+      "correct": true,
+      "distance_evaluations": 33,
+      "verified_leaves": 15
+    },
+    {
+      "query": 2,
+      "encrypted_query_s": 0.05402457399999605,
+      "reference_s": 0.0001461410000018759,
+      "correct": true,
+      "distance_evaluations": 18,
+      "verified_leaves": 15
+    }
+  ]
+}

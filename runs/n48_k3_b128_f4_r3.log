@@ -1,0 +1,93 @@
+Generando llaves Paillier...
+Data Owner cargando dataset...
+CSV espacial detectado.
+Columnas usadas por SKNN: x, y
+
+Dataset CSV mezclado de forma reproducible.
+Semilla: 42
+
+Dataset cargado:
+  Registros     : 110
+  Dimensiones   : 2
+  X             : 3 - 99
+  Y             : 0 - 97
+
+Dimensiones del dataset: (110, 2)
+
+Base de datos preparada:
+  Registros     : 48
+  Dimensiones   : 2
+
+Consultas seleccionadas:
+Índices: [48, 109]
+Data Owner preparando y externalizando la base de datos...
+Construyendo KD-tree, cifrando DB y enviando a CloudB...
+
+================================================================================
+SKNN-QP CIFRADO CON PAILLIER + KD-TREE POR HOJAS
+================================================================================
+Fuente           : csv
+Registros DB     : 48
+Consultas        : 2
+Atributos        : 2
+k                : 3
+Bits de Paillier : 128
+Capacidad hoja   : 4
+Cloud            : CloudB (único)
+
+Data User enviando consulta 1...
+
+--------------------------------------------------------------------------------
+CONSULTA 1
+Vector consulta: [94, 43]
+IDs esperados  : [26, 43, 14]
+IDs Paillier   : [26, 43, 14]
+
+Vecino 1: ID=26, distancia²=52, registro=[90, 37]
+Vecino 2: ID=43, distancia²=65, registro=[90, 50]
+Vecino 3: ID=14, distancia²=125, registro=[84, 38]
+
+Mismo orden       : True
+Mismos registros  : True
+Mismas distancias : True
+Recall@k           : 1.0000
+Jaccard@k          : 1.0000
+Acuerdo ranking   : 1.0000
+
+KD-tree            : 16 hojas totales
+Hojas iniciales    : 1
+Hojas adicionales  : 2
+Hojas verificadas  : 15
+Distancias ESSED   : 9/48 registros
+
+Data User enviando consulta 2...
+
+--------------------------------------------------------------------------------
+CONSULTA 2
+Vector consulta: [51, 12]
+IDs esperados  : [8, 28, 36]
+IDs Paillier   : [8, 28, 36]
+
+Vecino 1: ID=8, distancia²=18, registro=[54, 15]
+Vecino 2: ID=28, distancia²=68, registro=[49, 4]
+Vecino 3: ID=36, distancia²=290, registro=[34, 11]
+
+Mismo orden       : True
+Mismos registros  : True
+Mismas distancias : True
+Recall@k           : 1.0000
+Jaccard@k          : 1.0000
+Acuerdo ranking   : 1.0000
+
+KD-tree            : 16 hojas totales
+Hojas iniciales    : 1
+Hojas adicionales  : 5
+Hojas verificadas  : 15
+Distancias ESSED   : 18/48 registros
+
+================================================================================
+RESUMEN
+================================================================================
+Consultas correctas: 2/2
+Archivo de salida  : /mnt/data/sknnqp_fase2/runs/n48_k3_b128_f4_r3.csv
+

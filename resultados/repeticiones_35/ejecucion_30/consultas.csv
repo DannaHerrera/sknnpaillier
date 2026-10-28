@@ -1,0 +1,2 @@
+consulta,etiqueta_real,prediccion_paillier,correcta,ids_sknn,distancias_cuadradas,tiempo_consulta_cifrada_s,tiempo_descifrado_final_s,distancias_evaluadas,hojas_totales,hojas_iniciales,hojas_adicionales
+1,C,U,0,7 1 4 5 2 6 8 3 0 9,46 67 79 96 98 132 141 256 347 388,28.79793139998219,1.1382832000090275,10,10,1,9

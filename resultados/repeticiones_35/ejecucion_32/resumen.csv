@@ -1,0 +1,2 @@
+dataset,registros,consultas,k,bits_paillier,capacidad_hoja,atributos_m,altura_maxima_h,semilla,tiempo_outsourcing_s,tiempo_consulta_promedio_s,tiempo_descifrado_promedio_s,distancias_evaluadas_promedio,accuracy,precision_macro,recall_macro,f1_macro,tiempo_total_s
+Letter Recognition,10,1,10,1024,1,6,7,42,3.2808910999738146,29.949145799997495,1.2239962999883574,10.0,0.0,0.0,0.0,0.0,34.57832219998818
