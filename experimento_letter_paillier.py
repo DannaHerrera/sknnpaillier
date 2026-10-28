@@ -352,10 +352,4 @@ def main():
     print("Resumen:", resumen)
     print("Archivos:", args.output_dir.resolve())
 
-    
-
-    
-
-
-if __name__ == "__main__":
-    main()
+main()
