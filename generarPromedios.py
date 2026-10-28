@@ -112,5 +112,4 @@ def main():
     print(salida_promedios.resolve())
 
 
-if __name__ == "__main__":
-    main()
+main()

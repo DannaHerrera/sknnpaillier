@@ -24,27 +24,7 @@ class _Candidate:
 
 
 class CloudBQueryProcessingModule:
-    """
-    ÚNICO CLOUD del sistema.
-
-    CloudB procesa las consultas cifradas y ejecuta:
-
-      1. Encrypted KD-tree search:
-         SPE-like sobre las hojas.
-
-      2. kNN retrieval:
-         ESSED-like sobre los registros de las hojas candidatas.
-
-      3. Result verification:
-         shortest point + distancia mínima de región.
-
-    SecureHelper.py ya no existe.
-
-    Cuando una operación no puede realizarse únicamente con las
-    propiedades homomórficas de Paillier, CloudB solicita una
-    operación CONTROLADA a KeyM. CloudB no recibe PrivateKey.
-    """
-
+    
     def __init__(
         self,
         transformer: SecureDataTransformationModule,
@@ -69,9 +49,7 @@ class CloudBQueryProcessingModule:
             int,
         ] = {}
 
-    # ==========================================================
     # RECEPCIÓN DE BD E ÍNDICE
-    # ==========================================================
 
     def set_database(
         self,
@@ -91,9 +69,7 @@ class CloudBQueryProcessingModule:
             encrypted_kd_tree
         )
 
-    # ==========================================================
     # OPERACIONES HOMOMÓRFICAS PAILLIER
-    # ==========================================================
 
     def encrypted_add(
         self,
@@ -152,22 +128,14 @@ class CloudBQueryProcessingModule:
             ),
         )
 
-    # ==========================================================
-    # MULTIPLICACIÓN SEGURA
-    # ==========================================================
+    # MULTIPLICACION SEGURA
 
     def secure_multiply(
         self,
         encrypted_a: int,
         encrypted_b: int,
     ) -> int:
-        """
-        CloudB genera máscaras aleatorias.
-
-        KeyM solo ve los valores enmascarados y devuelve el producto
-        nuevamente cifrado. Después CloudB elimina los términos de
-        las máscaras homomórficamente.
-        """
+        
         n = (
             self.transformer.public_key.n
         )
@@ -242,9 +210,7 @@ class CloudBQueryProcessingModule:
 
         return result
 
-    # ==========================================================
     # ESSED-LIKE
-    # ==========================================================
 
     def secure_squared_distance(
         self,
@@ -294,9 +260,7 @@ class CloudBQueryProcessingModule:
 
         return encrypted_distance
 
-    # ==========================================================
     # COMPARACIONES CONTROLADAS
-    # ==========================================================
 
     def _secure_le(
         self,
@@ -330,9 +294,6 @@ class CloudBQueryProcessingModule:
             )
         )
 
-    # ==========================================================
-    # SPE-LIKE: q DENTRO DE UNA HOJA
-    # ==========================================================
 
     def secure_point_enclosure(
         self,
@@ -364,9 +325,7 @@ class CloudBQueryProcessingModule:
 
         return True
 
-    # ==========================================================
     # SHORTEST POINT DE q A UNA REGIÓN
-    # ==========================================================
 
     def encrypted_shortest_point(
         self,
@@ -473,9 +432,7 @@ class CloudBQueryProcessingModule:
             encrypted_id,
         )
 
-    # ==========================================================
     # TOP-K
-    # ==========================================================
 
     def _candidate_le(
         self,
@@ -583,9 +540,7 @@ class CloudBQueryProcessingModule:
 
         return evaluations
 
-    # ==========================================================
     # FASE 1: BUSCAR HOJA(S) QUE CONTIENEN q
-    # ==========================================================
 
     def _find_candidate_leaves(
         self,
@@ -656,9 +611,7 @@ class CloudBQueryProcessingModule:
 
         return best_leaf
 
-    # ==========================================================
-    # PROCESAMIENTO COMPLETO
-    # ==========================================================
+    # PROCESAMIENTO
 
     def process_query(
         self,
@@ -692,9 +645,7 @@ class CloudBQueryProcessingModule:
                 "Dimensión de consulta incorrecta."
             )
 
-        # ------------------------------------------------------
-        # 1. ENCRYPTED KD-TREE SEARCH
-        # ------------------------------------------------------
+        # 1. ENCRYPTED KD-TREE 
 
         initial_leaves = (
             self._find_candidate_leaves(
@@ -733,9 +684,6 @@ class CloudBQueryProcessingModule:
                 leaf.leaf_id
             )
 
-        # ------------------------------------------------------
-        # 2 + 3. kNN RETRIEVAL + RESULT VERIFICATION
-        # ------------------------------------------------------
 
         verified_leaves = 0
         additional_leaves = 0
