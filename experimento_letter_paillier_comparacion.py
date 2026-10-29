@@ -25,6 +25,83 @@ def cargar_letras(ruta: Path, semilla: int):
     return X[indices], y[indices]
 
 
+def cargar_preprocesado(carpeta: Path, db_rows: int, consultas: int,
+                        atributos: int, semilla: int, bits_escala: int):
+    """Carga exclusivamente archivos preprocesados; no requiere el ZIP.
+
+    BD: IDs originales impares (X_reducido).
+    Consultas: IDs pares tomados de X_completo y transformados usando
+    el escalador de la configuración reducida.
+    """
+    if atributos != 6:
+        raise ValueError("La configuración reducida utiliza exactamente 6 atributos")
+    if not (1 <= db_rows <= 10000 and 1 <= consultas <= 10000):
+        raise ValueError("db-rows y queries deben estar entre 1 y 10000")
+
+    X = np.load(carpeta / "X_reducido.npy", allow_pickle=False)
+    codigos = np.load(carpeta / "clases_reducido.npy", allow_pickle=False)
+    ids = np.load(carpeta / "ids_reducido.npy", allow_pickle=False)
+    normas2 = np.load(carpeta / "normas2_reducido.npy", allow_pickle=False)
+    mapa = np.load(carpeta / "mapa_etiquetas.npy", allow_pickle=True)  # Solo archivos propios/confiables
+
+    X_total = np.load(carpeta / "X_completo.npy", allow_pickle=False)
+    y_total = np.load(carpeta / "clases_completo.npy", allow_pickle=False)
+    ids_total = np.load(carpeta / "ids_completo.npy", allow_pickle=False)
+
+    if X.shape != (10000, 6) or X_total.shape != (20000, 16):
+        raise ValueError("Dimensiones inesperadas para matrices reducida/completa")
+    if any(len(a) != 10000 for a in (codigos, ids, normas2)):
+        raise ValueError("Las matrices auxiliares reducidas no tienen 10000 filas")
+    if len(y_total) != 20000 or len(ids_total) != 20000:
+        raise ValueError("Los vectores completos deben tener 20000 filas")
+    if not np.array_equal(ids, np.arange(1, 20001, 2)):
+        raise ValueError("Los IDs reducidos deben ser 1,3,...,19999")
+    if not np.array_equal(ids_total, np.arange(1, 20001)):
+        raise ValueError("Los IDs completos deben ser 1,2,...,20000")
+    if not np.allclose(normas2, np.sum(X ** 2, axis=1)):
+        raise ValueError("normas2_reducido.npy no coincide con X_reducido.npy")
+    if not np.all(np.isfinite(X)) or not np.all(np.isfinite(X_total)):
+        raise ValueError("Se encontraron valores no finitos")
+    if not np.array_equal(codigos, y_total[::2]):
+        raise ValueError("Las etiquetas reducidas no coinciden con los IDs impares")
+    if not np.allclose(X, X_total[::2, :6]):
+        raise ValueError("Los atributos reducidos no coinciden con la versión completa")
+    if np.min(codigos) < 0 or np.max(y_total) >= len(mapa):
+        raise ValueError("Etiquetas fuera del mapa de clases")
+
+    rng_bd = np.random.default_rng(semilla + 2000003)
+    posiciones_db = (np.arange(10000) if db_rows == 10000 else
+                     np.sort(rng_bd.choice(10000, db_rows, replace=False)))
+    X_db_float = X[posiciones_db]
+    y_db = mapa[codigos[posiciones_db]].astype(str)
+    ids_db_originales = ids[posiciones_db]
+
+    posiciones_pares = np.flatnonzero(ids_total % 2 == 0)
+    rng_q = np.random.default_rng(semilla + 1000003)
+    posiciones_q = rng_q.choice(posiciones_pares, consultas, replace=False)
+
+    # Invertir la normalización completa y aplicar la normalización reducida.
+    # Esto evita volver a hacer fit y no requiere el archivo ZIP original.
+    with np.load(carpeta / "escalador_completo.npz") as esc_completo:
+        scale_completo = esc_completo["scale"][:6]
+        offset_completo = esc_completo["min"][:6]
+    with np.load(carpeta / "escalador_reducido.npz") as esc_reducido:
+        scale_reducido = esc_reducido["scale"]
+        offset_reducido = esc_reducido["min"]
+    if np.any(scale_completo == 0):
+        raise ValueError("Escala completa inválida para invertir normalización")
+    X_q_crudo = (X_total[posiciones_q, :6] - offset_completo) / scale_completo
+    X_q_float = X_q_crudo * scale_reducido + offset_reducido
+    y_q = mapa[y_total[posiciones_q]].astype(str)
+    ids_q_originales = ids_total[posiciones_q]
+
+    S = 2 ** bits_escala
+    X_db = np.rint(X_db_float * S).astype(np.int64)
+    X_q = np.rint(X_q_float * S).astype(np.int64)
+    normas2_enteras = np.sum(X_db * X_db, axis=1)
+    return (X_db, y_db, X_q, y_q, ids_q_originales,
+            ids_db_originales, normas2_enteras)
+
 def clasificar_por_mayoria(ids: list[int], etiquetas: np.ndarray) -> str:
     # Etiquetas conservadas solamente en el cliente confiable.
     votos = [str(etiquetas[i]) for i in ids]
@@ -134,7 +211,11 @@ def main():
     parser = argparse.ArgumentParser(
         description="Consultas SKNN-QP con Paillier; sin busqueda kNN en texto plano"
     )
-    parser.add_argument("--dataset", type=Path, default=Path("letter+recognition.zip"))
+    parser.add_argument("--dataset", type=Path, default=None, help="No se usa con los archivos preprocesados; conservado por compatibilidad")
+    parser.add_argument("--preprocessed-dir", type=Path, default=Path("salida_preprocesamiento"),
+                        help="Carpeta con archivos .npy y .npz preprocesados")
+    parser.add_argument("--fixed-point-bits", type=int, default=12,
+                        help="gamma para S=2**gamma antes de Paillier (por defecto 12)")
     parser.add_argument("--db-rows", type=int, default=10)
     parser.add_argument("--queries", type=int, default=1)
     parser.add_argument("--k", type=int, default=10)
@@ -148,51 +229,31 @@ def main():
     print("\nCONFIGURACIÓN RECIBIDA:")
     print(vars(args))
     if not (1 <= args.k <= args.db_rows and args.queries >= 1 and
-            args.db_rows + args.queries <= 20000):
+            (args.db_rows <= 10000 and args.queries <= 10000)):
         parser.error("Requiere 1 <= k <= db-rows; queries >= 1; filas totales <= 20000")
     if args.attributes < 1 or args.attributes > 16 or args.max_depth < 0:
         parser.error("attributes debe estar entre 1 y 16, max-depth >= 0")
     if args.key_bits < 128 or args.leaf_capacity < 1:
         parser.error("key-bits >= 128 y leaf-capacity >= 1")
 
-    X, y = cargar_letras(args.dataset, args.seed)
-    X = X[:, :args.attributes].copy()  # Primeros m atributos; etiquetas aparte
+    if args.fixed_point_bits < 0 or args.fixed_point_bits > 20:
+        parser.error("fixed-point-bits debe estar entre 0 y 20")
+    try:
+        (X_db, y_db, X_q, y_q, indices_q,
+         ids_db_originales, normas2_enteras) = cargar_preprocesado(
+            args.preprocessed_dir, args.db_rows, args.queries,
+            args.attributes, args.seed, args.fixed_point_bits
+        )
+    except (ValueError, FileNotFoundError, KeyError) as exc:
+        parser.error(str(exc))
 
-    
-    # Consultas fijas para cualquier n y m con la misma semilla y --queries.
-    # Primero se separa la evaluación, y después se selecciona el entrenamiento.
-    rng_consultas = np.random.default_rng(args.seed + 1000003)
-    indices_q = rng_consultas.permutation(len(y))[:args.queries]
-    mascara_entrenamiento = np.ones(len(y), dtype=bool)
-    mascara_entrenamiento[indices_q] = False
+    print("Datos preprocesados cargados; escala entera:", 2 ** args.fixed_point_bits)
+    print("BD:", X_db.shape, "Consultas:", X_q.shape)
+    print("IDs originales BD (muestra):", ids_db_originales[:10].tolist())
+    print("IDs originales consultas (muestra):", indices_q[:10].tolist())
+    print("Normas enteras precalculadas:", normas2_enteras.shape)
+    print("Distribución de etiquetas BD:", dict(Counter(y_db)))
 
-    clases = np.unique(y)
-    base_por_clase, sobrantes = divmod(args.db_rows, len(clases))
-    indices_db = []
-    rng_entrenamiento = np.random.default_rng(args.seed + 2000003)
-    for posicion, clase in enumerate(clases):
-        indices_clase = np.flatnonzero((y == clase) & mascara_entrenamiento)
-        rng_entrenamiento.shuffle(indices_clase)
-        cantidad = base_por_clase + (1 if posicion < sobrantes else 0)
-        if len(indices_clase) < cantidad:
-            parser.error(f"No hay suficientes registros de la clase {clase} para entrenamiento")
-        indices_db.extend(indices_clase[:cantidad].tolist())
-
-    indices_db = np.asarray(indices_db, dtype=int)
-    X_db, y_db = X[indices_db].copy(), y[indices_db].copy()
-    X_q, y_q = X[indices_q].copy(), y[indices_q].copy()
-    print("Índices fijos de consultas:", indices_q.tolist())
-
-    print("\nDISTRIBUCIÓN DEL ENTRENAMIENTO:")
-    print(dict(Counter(y_db)))
-
-    print("Consultas seleccionadas:", len(X_q))
-
-
-
-
-    
-    
     inicio = time.perf_counter()
 
     print("PASO 1: Generando claves Paillier...", flush=True)
@@ -229,8 +290,6 @@ def main():
 
     print("PASO 3: Iniciando consultas...", flush=True)
 
-    secure_data.send_database_to_cloud(X_db, leaf_capacity=args.leaf_capacity, max_depth=args.max_depth)
-    tiempo_outsourcing = time.perf_counter() - t
 
     filas = []
     predicciones_mayoria = []
@@ -307,7 +366,8 @@ def main():
             "correcta_mayoria": int(str(predicha_mayoria) == str(etiqueta_real)),
             "prediccion_ponderada": str(predicha_ponderada),
             "correcta_ponderada": int(str(predicha_ponderada) == str(etiqueta_real)),
-            "indice_dataset_consulta": int(indices_q[num - 1]),
+            "indice_dataset_consulta": int(indices_q[num - 1] - 1),
+            "id_original_consulta": int(indices_q[num - 1]),
             "ids_sknn": " ".join(map(str, ids)),
             "distancias_cuadradas": " ".join(map(str, distancias_recuperadas)),
             "tiempo_consulta_cifrada_s": tiempo_consulta,
@@ -353,7 +413,9 @@ def main():
         "consultas": args.queries, "k": args.k, "bits_paillier": args.key_bits,
         "capacidad_hoja": args.leaf_capacity, "atributos_m": args.attributes,
         "altura_maxima_h": args.max_depth, "semilla": args.seed,
-        "indices_consultas": " ".join(map(str, indices_q.tolist())),
+        "indices_consultas": " ".join(map(str, (indices_q - 1).tolist())),
+        "ids_originales_consultas": " ".join(map(str, indices_q.tolist())),
+        "factor_escala": 2 ** args.fixed_point_bits,
         "tiempo_outsourcing_s": tiempo_outsourcing,
         "tiempo_consulta_promedio_s": float(np.mean([f["tiempo_consulta_cifrada_s"] for f in filas])),
         "tiempo_descifrado_promedio_s": float(np.mean([f["tiempo_descifrado_final_s"] for f in filas])),
