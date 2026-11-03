@@ -1,3 +1,7 @@
+"""Partition integer records into KD-tree leaves and encrypt their bounds.
+Tree construction runs on plaintext data in the trusted owner context.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -8,13 +12,23 @@ import numpy as np
 
 @dataclass(frozen=True)
 class EncryptedKDLeaf:
-    """
-    Hoja del KD-tree entregada a CloudB.
+    """Store encrypted bounds and visible record IDs for one region.
 
-    Cada hoja representa una región multidimensional:
-        lb <= x <= ub
+    Each region uses inclusive bounds. Different leaves may share a
+    boundary when records have equal coordinates. Values are not validated
+    by this dataclass.
 
-    y almacena los IDs de los registros pertenecientes a ella.
+    Args:
+        leaf_id (int): Identifier of this leaf.
+        encrypted_lower_bounds (tuple[int, ...]): Encrypted inclusive lower bounds.
+        encrypted_upper_bounds (tuple[int, ...]): Encrypted inclusive upper bounds.
+        record_ids (tuple[int, ...]): Database row IDs assigned to this region.
+
+    Attributes:
+        leaf_id (int): Identifier of this leaf.
+        encrypted_lower_bounds (tuple[int, ...]): Encrypted inclusive lower bounds.
+        encrypted_upper_bounds (tuple[int, ...]): Encrypted inclusive upper bounds.
+        record_ids (tuple[int, ...]): Database row IDs assigned to this region.
     """
     leaf_id: int
     encrypted_lower_bounds: tuple[int, ...]
@@ -24,11 +38,22 @@ class EncryptedKDLeaf:
 
 @dataclass(frozen=True)
 class EncryptedKDTree:
-    """
-    Índice cifrado usado durante la consulta.
+    """Store the leaf index used by encrypted queries.
 
-    CloudB trabaja directamente con las hojas; no necesita recorrer
-    left/right como en un KD-tree convencional.
+    The index contains leaves, not a hierarchy of child nodes. A depth
+    limit can produce leaves larger than leaf_capacity.
+
+    Args:
+        leaves (tuple[EncryptedKDLeaf, ...]): Encrypted leaf regions.
+        dimensions (int): Number of coordinates per record.
+        database_size (int): Number of records indexed.
+        leaf_capacity (int): Requested maximum records per leaf.
+
+    Attributes:
+        leaves (tuple[EncryptedKDLeaf, ...]): Encrypted leaf regions.
+        dimensions (int): Number of coordinates per record.
+        database_size (int): Number of records indexed.
+        leaf_capacity (int): Requested maximum records per leaf.
     """
     leaves: tuple[EncryptedKDLeaf, ...]
     dimensions: int
@@ -38,6 +63,13 @@ class EncryptedKDTree:
 
 @dataclass(frozen=True)
 class _PlainKDLeaf:
+    """Store plaintext region bounds during trusted construction.
+
+    Attributes:
+        lower_bounds (tuple[int, ...]): Inclusive lower bounds.
+        upper_bounds (tuple[int, ...]): Inclusive upper bounds.
+        record_ids (tuple[int, ...]): Row IDs in the leaf.
+    """
     lower_bounds: tuple[int, ...]
     upper_bounds: tuple[int, ...]
     record_ids: tuple[int, ...]
@@ -46,6 +78,17 @@ class _PlainKDLeaf:
 def _validate_database(
     database: np.ndarray,
 ) -> tuple[int, int]:
+    """Check the database shape.
+
+    Args:
+        database (numpy.ndarray): Input array.
+
+    Returns:
+        tuple[int, int]: Row and coordinate counts.
+
+    Raises:
+        ValueError: If the array is not 2D or either dimension is empty.
+    """
     if database.ndim != 2:
         raise ValueError(
             "La base de datos debe ser una matriz 2D."
@@ -72,17 +115,19 @@ def _build_plain_kd_leaves(
     stats: dict[str, int] | None = None,
     max_depth: int | None = None,
 ) -> list[_PlainKDLeaf]:
-    """
-    Construcción EN CLARO dentro de la zona confiable.
+    """Split records by alternating axes and median positions.
 
-    Se divide recursivamente por mediana:
-        axis = depth % dimensions
+    Args:
+        database (numpy.ndarray): Nonempty 2D integer array of shape (rows, dimensions).
+        leaf_capacity (int): Positive target capacity.
+        stats (dict[str, int] | None): Optional node/depth counters to update.
+        max_depth (int | None): Optional root-relative depth limit. Defaults to None.
 
-    El objetivo final no es conservar el árbol jerárquico, sino las
-    regiones hoja con:
-        lower_bounds
-        upper_bounds
-        record_ids
+    Returns:
+        list[_PlainKDLeaf]: Plaintext leaf regions.
+
+    Raises:
+        ValueError: If the array shape or leaf capacity is invalid.
     """
     rows, dimensions = _validate_database(
         database
@@ -111,6 +156,17 @@ def _build_plain_kd_leaves(
         lower_bounds: list[int],
         upper_bounds: list[int],
     ) -> None:
+        """Recursively partition IDs and accumulate leaf regions.
+
+        Args:
+            record_ids (list[int]): IDs to partition.
+            depth (int): Current root-relative depth.
+            lower_bounds (list[int]): Inclusive region lower bounds.
+            upper_bounds (list[int]): Inclusive region upper bounds.
+
+        Returns:
+            None: Updates the leaves list and optional statistics.
+        """
         if stats is not None:
             stats["total_nodes"] = stats.get("total_nodes", 0) + 1
             stats["max_depth"] = max(stats.get("max_depth", 0), depth)
@@ -257,11 +313,23 @@ def build_encrypted_kd_tree(
     leaf_capacity: int = 16,
     max_depth: int | None = None,
 ) -> EncryptedKDTree:
-    """
-    1. Construye el KD-tree en plaintext.
-    2. Conserva únicamente sus hojas/regiones.
-    3. Cifra lb y ub atributo por atributo.
-    4. Entrega el índice cifrado a CloudB.
+    """Build leaf regions and encrypt every coordinate bound.
+
+    Coordinates are converted with int; integer input is a caller constraint.
+    A depth limit takes precedence over capacity. Nonnegative max_depth is
+    expected but not validated. Encryption callback exceptions propagate.
+
+    Args:
+        database (numpy.ndarray): Nonempty 2D integer array of shape (rows, dimensions).
+        encrypt_value (Callable[[int], int]): Integer encryption callback.
+        leaf_capacity (int): Positive target records per leaf. Defaults to 16.
+        max_depth (int | None): Depth limit with root at zero. Defaults to None.
+
+    Returns:
+        EncryptedKDTree: Encrypted regions and visible index metadata.
+
+    Raises:
+        ValueError: If the database is not nonempty and 2D or leaf_capacity <= 0.
     """
     rows, dimensions = _validate_database(
         database

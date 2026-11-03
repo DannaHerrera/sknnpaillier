@@ -1,80 +1,119 @@
-# SKNN-QP con Paillier — parámetros solicitados
+# sknnpaillier
 
-Parámetros predeterminados: **n=10, h=7 (profundidad máxima, no profundidad alcanzada), k=10, m=6 y K=1024 bits**. Se utilizan los primeros seis atributos de Letter Recognition, con la etiqueta de clase conservada en el cliente confiable.
+`sknnpaillier` implements encrypted k-nearest-neighbor search using Paillier
+and spatial partitioning based on KD-tree leaves. The data owner encrypts
+integer records and region bounds. A cloud query processor uses homomorphic
+operations and a trusted key manager to select neighbors. The client decrypts
+the returned records and squared distances; labels remain on the client.
 
-## Dataset
+## Requirements and installation
 
-El dataset Letter Recognition (UCI) no se distribuye en el repositorio. Antes de ejecutar, descárgalo y empaquétalo como `letter+recognition.zip` en la raíz del proyecto (el zip debe contener el archivo `letter-recognition.data` en su primer nivel):
-
-```bash
-wget https://archive.ics.uci.edu/ml/machine-learning-databases/letter-recognition/letter-recognition.data
-zip letter+recognition.zip letter-recognition.data
-```
-
-## Biblioteca instalable con Poetry
-
-Se requiere Python >=3.10 y Poetry 2.x. NumPy es la única dependencia base;
-Rich es opcional. Las herramientas pytest y Ruff están en el grupo dev.
-`pyproject.toml` es la fuente de dependencias; se eliminó requirements.txt
-para evitar dos listas manuales. El lock vacío inicial debe generarse localmente:
+The library requires Python 3.10 or later and Poetry 2.x. Documentation tools
+require Python 3.11 or later. NumPy is the base dependency; Rich is optional.
 
 ```bash
-poetry lock
-poetry check --lock
-poetry install --with dev --extras rich
-poetry run pytest -q
-poetry run ruff check sknnpaillier tests
-poetry build
+# Library only
+poetry install --only main
+
+# Library, tests, and examples
+poetry install --with dev
+
+# Include documentation tools (Python >=3.11)
+poetry install --with dev,docs
 ```
 
-Para instalar únicamente la biblioteca: `poetry install --only main`.
-El paquete construido incluye `sknnpaillier`, sin empaquetar scripts o pruebas.
+Create local configuration files from the public templates if needed. These
+commands preserve existing files:
+
+```bash
+cp -n tests/.env.example tests/.env
+cp -n examples/.env.example examples/.env
+```
+
+Local `.env` files are ignored by Git. Tests and examples load their own file
+using its directory, with shell variables taking precedence. The library itself
+does not load `.env` files. Missing files use defaults from the consuming code.
+
+## Quick start
+
+Run either self-contained example in the development environment:
+
+```bash
+poetry run python examples/basic_usage.py
+poetry run python examples/float_scaling_usage.py
+```
+
+The first uses integer records. The second quantizes floats using a common
+scale, then divides decrypted squared distances by `scale**2`. Both verify
+results against client-side references. Quantization can change neighbor order;
+the float example checks whether the order is preserved for its dataset.
+
+The API is available directly from the installed package:
 
 ```python
 from sknnpaillier import (
     CloudBQueryProcessingModule,
     KeyManagementModule,
     SecureDataTransformationModule,
+    resolve_key_bits,
 )
 
-keys = KeyManagementModule(1024)
-transformer = SecureDataTransformationModule(keys.public_key)
-cloud = CloudBQueryProcessingModule(transformer, keys)
-transformer.set_cloud(cloud)
+# Demonstration setting, not a production security recommendation.
+keys = KeyManagementModule(resolve_key_bits("80"))
+owner = SecureDataTransformationModule(keys.public_key)
+cloud = CloudBQueryProcessingModule(owner, keys)
+owner.set_cloud(cloud)
 ```
 
-Los módulos públicos usan snake_case: `cloud_b`, `kd_tree`, `key_m` y
-`secure_data_t`. Los scripts se trasladaron a `scripts/` y conservan imports
-antiguos: su ejecución queda pendiente de migración. Esta etapa no los modifica.
-Pandas y Matplotlib son dependencias de esos scripts, no de la biblioteca.
+`SECURITY_LEVEL` accepts only `test`, 80, 112, or 128; numeric strings are
+accepted for environment settings. These map to 128, 1024, 2048, and 3072 modulus
+bits, respectively. Raw modulus sizes and alternative aliases are rejected.
+The `test` setting is for unit tests; level 80 is for demonstrations only.
 
-## Logging de tiempos
+## Documentation
 
-El proyecto usa `sknnpaillier.log` (JSON estructurado por stdout) para los tiempos de cada etapa: generación de llaves, outsourcing (cifrado de BD vs construcción del KD-tree), fases de la consulta cifrada, descifrado y totales. Por defecto la consola muestra nivel INFO; para ver el desglose por fases:
+- [Introduction](docs/index.md)
+- [Requirements and installation](docs/installation.md)
+- [Environment variables](docs/environment.md)
+- [Usage](docs/usage.md)
+- [API reference](docs/reference/api.md)
+
+Build or preview the Zensical site with the documentation group installed:
 
 ```bash
-SKNN_LOG_CONSOLE_LEVEL=DEBUG poetry run python tu_aplicacion.py
+poetry run zensical build --clean
+poetry run zensical serve
 ```
 
-Variables de entorno disponibles:
+The API reference is generated from source docstrings. It covers constructors,
+public methods, parameters, return values, and implemented error conditions.
+The site target is <https://shanelreyes.github.io/sknnpaillier/>.
 
-| Variable | Default | Descripción |
-|---|---|---|
-| `SKNN_LOG_LEVEL` | `DEBUG` | Nivel global del logger |
-| `SKNN_LOG_CONSOLE_LEVEL` | `INFO` | Nivel mínimo mostrado en consola |
-| `SKNN_LOG_DISABLED` | `0` | `1` desactiva la salida del logging |
-| `SKNN_LOG_TO_FILE` | `0` | `1` escribe logs rotativos en archivo |
-| `SKNN_LOG_ERROR_FILE` | `0` | `1` escribe archivo separado de errores |
-| `SKNN_LOG_PATH` | `.sknn/log` | Directorio de logs (solo si `TO_FILE`/`ERROR_FILE`) |
-| `SKNN_LOG_RICH` | `0` | `1` usa `rich` en consola (requiere `poetry install --extras rich`) |
-| `SKNN_LOG_JSON_INDENT` | `0` | `>0` indenta el JSON de consola |
+## Development and CI
 
-`h=7` es una cota de profundidad. Para un KD-tree por medianas con 10 registros, la máxima profundidad efectiva será alrededor de 4 aristas, según el árbol; imponer exactamente siete niveles requeriría una política de partición diferente. `leaf-capacity=1` permite subdividir hasta hojas individuales.
+```bash
+poetry run pytest -q
+poetry run ruff check sknnpaillier tests examples
+```
 
-Los diez vecinos devueltos representan toda la BD (k=n), por lo que las métricas de recuperación no indican capacidad discriminatoria. Este programa solo usa SKNN-QP + Paillier, no ejecuta kNN plaintext de referencia. Las etiquetas son manejadas en el cliente y el descifrado final es autorizado.
+CI runs pytest on Python 3.10 and 3.11 for pull requests and pushes to `main`.
+Documentation builds on pull requests and deploys from `main`. GitHub Pages
+requires **Settings → Pages → Build and deployment → Source: GitHub Actions**
+and an allowed `github-pages` deployment environment. No generated-site branch
+or personal access token is required.
 
-**Advertencia:** 1024 bits no es un tamaño recomendado para seguridad contemporánea; se usa aquí únicamente por el parámetro solicitado.
+Commit `pyproject.toml` and `poetry.lock` together when dependencies change.
+Run `poetry lock` only when the lock needs updating. The current lock and
+installation have been validated locally by the project maintainer.
 
-Los imports del paquete no crean handlers ni archivos: los loggers se obtienen
-al generar llaves, enviar una base o procesar una consulta. La suite usa datos
-sintéticos y llaves de 128 bits solo para pruebas; no necesita el dataset.
+## Current limitations
+
+This is a prototype. Records must use integer coordinates; modular distance
+and ranking-score overflow is not detected. The key manager and cloud run in
+the same process without enforced isolation. Record IDs, access patterns and
+comparison outcomes are visible. Selecting a security level does not certify
+the implementation or the full protocol.
+
+The legacy experiments under `scripts/` are outside the current library
+migration. Their imports still require migration. The self-contained examples
+do not require the external Letter Recognition dataset.

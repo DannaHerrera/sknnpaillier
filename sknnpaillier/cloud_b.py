@@ -1,3 +1,7 @@
+"""Evaluate encrypted nearest-neighbor queries using KD-tree leaf regions.
+Nonlinear operations use a trusted key manager in the same process.
+"""
+
 from __future__ import annotations
 
 import secrets
@@ -13,6 +17,13 @@ from .secure_data_t import SecureDataTransformationModule
 
 @dataclass
 class _Candidate:
+    """Store an internal candidate and its encrypted ranking values.
+
+    Attributes:
+        record_id (int): Visible database row ID.
+        encrypted_distance (int): Encrypted squared distance.
+        encrypted_score (int): Encrypted distance/ID tie-breaking score.
+    """
     record_id: int
     encrypted_distance: int
     encrypted_score: int
@@ -20,11 +31,33 @@ class _Candidate:
 
 class CloudBQueryProcessingModule:
 
+    """Evaluate nearest-neighbor queries over encrypted records.
+
+    Record IDs and access patterns are visible. Distances and ranking
+    scores must not wrap modulo n; no overflow exception is raised. The
+    key manager reference does not enforce a separate trust boundary.
+
+    Attributes:
+        transformer (SecureDataTransformationModule): Encryption collaborator.
+        key_manager (KeyManagementModule): Trusted nonlinear-operation provider.
+        encrypted_database (Sequence[Sequence[int]] | None): Encrypted rows.
+        encrypted_kd_tree (EncryptedKDTree | None): Encrypted leaf index.
+        last_query_stats (dict[str, int]): Counters from the last completed query.
+    """
     def __init__(
         self,
         transformer: SecureDataTransformationModule,
         key_manager: KeyManagementModule,
     ) -> None:
+        """Configure collaborators and initialize empty query state.
+
+        Args:
+            transformer (SecureDataTransformationModule): Encryptor for this database.
+            key_manager (KeyManagementModule): Manager for the same public key.
+
+        Returns:
+            None: Initializes the processor without a database or index.
+        """
         self.transformer = (
             transformer
         )
@@ -52,6 +85,16 @@ class CloudBQueryProcessingModule:
             Sequence[int]
         ],
     ) -> None:
+        """Attach encrypted records without copying or validating them.
+
+        The caller must ensure that shape, key, and record IDs match the index.
+
+        Args:
+            encrypted_database (Sequence[Sequence[int]]): Ciphertext rows indexed by ID.
+
+        Returns:
+            None: Stores the supplied sequence.
+        """
         self.encrypted_database = (
             encrypted_database
         )
@@ -60,6 +103,16 @@ class CloudBQueryProcessingModule:
         self,
         encrypted_kd_tree: EncryptedKDTree,
     ) -> None:
+        """Attach the encrypted leaf index.
+
+        Consistency with database dimensions and record IDs is not validated.
+
+        Args:
+            encrypted_kd_tree (EncryptedKDTree): Index matching the attached database.
+
+        Returns:
+            None: Stores the supplied index.
+        """
         self.encrypted_kd_tree = (
             encrypted_kd_tree
         )
@@ -71,6 +124,15 @@ class CloudBQueryProcessingModule:
         encrypted_a: int,
         encrypted_b: int,
     ) -> int:
+        """Add plaintext residues by multiplying ciphertexts.
+
+        Args:
+            encrypted_a (int): Ciphertext of the first operand.
+            encrypted_b (int): Ciphertext of the second operand.
+
+        Returns:
+            int: Encryption of a + b modulo n.
+        """
         n2 = (
             self.transformer.public_key.n2
         )
@@ -85,6 +147,15 @@ class CloudBQueryProcessingModule:
         ciphertext: int,
         scalar: int,
     ) -> int:
+        """Multiply an encrypted residue by a plaintext scalar.
+
+        Args:
+            ciphertext (int): Encrypted operand.
+            scalar (int): Multiplier, reduced modulo n.
+
+        Returns:
+            int: Encryption of the modular scalar product.
+        """
         public_key = (
             self.transformer.public_key
         )
@@ -100,6 +171,14 @@ class CloudBQueryProcessingModule:
         self,
         ciphertext: int,
     ) -> int:
+        """Negate an encrypted plaintext residue.
+
+        Args:
+            ciphertext (int): Encrypted operand.
+
+        Returns:
+            int: Encryption of the additive inverse modulo n.
+        """
         n = (
             self.transformer.public_key.n
         )
@@ -116,6 +195,15 @@ class CloudBQueryProcessingModule:
         encrypted_a: int,
         encrypted_b: int,
     ) -> int:
+        """Subtract plaintext residues using homomorphic negation.
+
+        Args:
+            encrypted_a (int): Ciphertext of the first operand.
+            encrypted_b (int): Ciphertext of the second operand.
+
+        Returns:
+            int: Encryption of a - b modulo n.
+        """
         return self.encrypted_add(
             encrypted_a,
             self.encrypted_negate(
@@ -131,6 +219,15 @@ class CloudBQueryProcessingModule:
         encrypted_b: int,
     ) -> int:
 
+        """Multiply plaintext residues using random masks and the key manager.
+
+        Args:
+            encrypted_a (int): Ciphertext of the first operand.
+            encrypted_b (int): Ciphertext of the second operand.
+
+        Returns:
+            int: Encryption of a * b modulo n.
+        """
         n = (
             self.transformer.public_key.n
         )
@@ -212,6 +309,21 @@ class CloudBQueryProcessingModule:
         encrypted_record: Sequence[int],
         encrypted_query: Sequence[int],
     ) -> int:
+        """Compute an encrypted squared Euclidean distance.
+
+        The intended nonnegative distance must be below n. Modular wrapping
+        is silent and can invalidate subsequent comparisons.
+
+        Args:
+            encrypted_record (Sequence[int]): Encrypted record coordinates.
+            encrypted_query (Sequence[int]): Encrypted query of the same dimension.
+
+        Returns:
+            int: Encrypted sum of squared coordinate differences modulo n.
+
+        Raises:
+            ValueError: If record and query lengths differ.
+        """
         if (
             len(encrypted_record)
             != len(encrypted_query)
@@ -295,6 +407,19 @@ class CloudBQueryProcessingModule:
         encrypted_query: Sequence[int],
         leaf: EncryptedKDLeaf,
     ) -> bool:
+        """Check whether a query lies within a leaf region.
+
+        Signed comparisons decode coordinates in the trusted manager.
+        Matching query and bound lengths are a caller requirement; the region
+        helpers use zip and do not independently validate every length.
+
+        Args:
+            encrypted_query (Sequence[int]): Encrypted coordinates matching the leaf.
+            leaf (EncryptedKDLeaf): Region with encrypted inclusive bounds.
+
+        Returns:
+            bool: Whether every compared coordinate lies within its bounds.
+        """
         for (
             encrypted_q,
             encrypted_lb,
@@ -327,11 +452,18 @@ class CloudBQueryProcessingModule:
         encrypted_query: Sequence[int],
         leaf: EncryptedKDLeaf,
     ) -> tuple[int, ...]:
-        """
-        sp_j =
-          ub_j  si ub_j < q_j
-          lb_j  si q_j < lb_j
-          q_j   en otro caso
+        """Clamp each query coordinate to its region interval.
+
+        Signed comparisons decode coordinates in the trusted manager.
+        Matching query and bound lengths are a caller requirement; the region
+        helpers use zip and do not independently validate every length.
+
+        Args:
+            encrypted_query (Sequence[int]): Encrypted coordinates matching the leaf.
+            leaf (EncryptedKDLeaf): Region with encrypted inclusive bounds.
+
+        Returns:
+            tuple[int, ...]: Encrypted closest point in the region.
         """
         shortest: list[int] = []
 
@@ -376,6 +508,22 @@ class CloudBQueryProcessingModule:
         encrypted_query: Sequence[int],
         leaf: EncryptedKDLeaf,
     ) -> int:
+        """Compute the encrypted minimum squared distance to a region.
+
+        Signed comparisons decode coordinates in the trusted manager.
+        Matching query and bound lengths are a caller requirement; the region
+        helpers use zip and do not independently validate every length.
+
+        Args:
+            encrypted_query (Sequence[int]): Encrypted coordinates matching the leaf.
+            leaf (EncryptedKDLeaf): Region with encrypted inclusive bounds.
+
+        Returns:
+            int: Encrypted squared distance from the query to the region.
+
+        Raises:
+            ValueError: If the resulting closest point and query lengths differ.
+        """
         encrypted_sp = (
             self.encrypted_shortest_point(
                 encrypted_query,
@@ -399,6 +547,20 @@ class CloudBQueryProcessingModule:
         encrypted_distance: int,
         record_id: int,
     ) -> int:
+        """Encode distance ordering and deterministic ID tie-breaking.
+
+        The complete score must be below n. Overflow is not detected.
+
+        Args:
+            encrypted_distance (int): Encrypted nonnegative squared distance.
+            record_id (int): Database row ID.
+
+        Returns:
+            int: Encryption of distance * (database_size + 1) + record_id modulo n.
+
+        Raises:
+            RuntimeError: If no KD-tree is configured.
+        """
         if self.encrypted_kd_tree is None:
             raise RuntimeError(
                 "KD-tree no configurado."
@@ -560,9 +722,16 @@ class CloudBQueryProcessingModule:
         self,
         encrypted_query: Sequence[int],
     ) -> EncryptedKDLeaf:
-        """
-        Fallback para consultas fuera de los límites globales
-        observados durante la construcción del índice.
+        """Select a closest leaf when the query is outside all indexed regions.
+
+        Args:
+            encrypted_query (Sequence[int]): Encrypted query coordinates.
+
+        Returns:
+            EncryptedKDLeaf: A leaf with minimum encrypted region distance.
+
+        Raises:
+            RuntimeError: If the index is missing or contains no leaves.
         """
         if self.encrypted_kd_tree is None:
             raise RuntimeError(
@@ -613,6 +782,28 @@ class CloudBQueryProcessingModule:
         encrypted_query: Sequence[int],
         k: int,
     ) -> tuple[list[int], list[tuple[int, ...]], list[int]]:
+        """Return k neighbors ordered by squared distance and then record ID.
+
+        Updates last_query_stats with leaf and record evaluation counts.
+        The caller must supply a consistent index and avoid modular score
+        wrapping; neither condition is fully validated.
+
+        Args:
+            encrypted_query (Sequence[int]): Encrypted coordinates matching the index.
+            k (int): Number of neighbors, from 1 to the attached database length.
+
+        Returns:
+            tuple[list[int], list[tuple[int, ...]], list[int]]: Three aligned lists:
+                visible record IDs, encrypted coordinate tuples, and encrypted
+                squared distances. The client must decrypt the last two lists.
+
+        Raises:
+            RuntimeError: If the database or index is missing, or a needed index has no leaves.
+            ValueError: If k is out of range or query dimensions do not match.
+            IndexError: If an inconsistent index references absent database rows.
+            ImportError: If configured Rich logging is unavailable.
+            OSError: If configured log files cannot be created.
+        """
         if self.encrypted_database is None:
             raise RuntimeError(
                 "CloudB no recibió la BD cifrada."

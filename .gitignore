@@ -26,6 +26,15 @@ runs/
 .pytest_cache/
 .ruff_cache/
 
+# Local configuration; templates remain versioned
+.env
+.env.*
+!.env.example
+
+# Generated documentation
+site/
+.cache/
+
 # Logs del proyecto
 .sknn/
 

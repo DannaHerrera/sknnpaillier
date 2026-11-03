@@ -1,3 +1,7 @@
+"""Encrypt integer records and queries for the cloud query processor.
+Build and encrypt the spatial index before outsourcing the database.
+"""
+
 from __future__ import annotations
 
 import math
@@ -16,21 +20,28 @@ if TYPE_CHECKING:
 
 
 class SecureDataTransformationModule:
-    """
-    Zona confiable del Data Owner.
+    """Encrypt owner data and delegate queries to the cloud.
 
-    Responsabilidades:
-      - cifrar la base de datos;
-      - construir el KD-tree EN CLARO;
-      - cifrar lb/ub de sus hojas;
-      - cifrar la consulta;
-      - entregar BD + índice + consulta al único cloud: CloudB.
+    Labels remain with the client. Tree construction uses plaintext data
+    inside the trusted owner context.
+
+    Attributes:
+        public_key (PublicKey): Key used for all encryption operations.
+        cloud (CloudBQueryProcessingModule | None): Configured query processor.
     """
 
     def __init__(
         self,
         public_key: PublicKey,
     ) -> None:
+        """Configure encryption with an existing public key.
+
+        Args:
+            public_key (PublicKey): Paillier modulus parameters.
+
+        Returns:
+            None: Stores the key and leaves the cloud unset.
+        """
         self.public_key = (
             public_key
         )
@@ -41,12 +52,31 @@ class SecureDataTransformationModule:
         self,
         cloud: CloudBQueryProcessingModule,
     ) -> None:
+        """Attach the query processor used for data and query delivery.
+
+        Args:
+            cloud (CloudBQueryProcessingModule): Processor using the same key.
+
+        Returns:
+            None: Stores the processor reference.
+        """
         self.cloud = cloud
 
     def encrypt(
         self,
         value: int,
     ) -> int:
+        """Encrypt an integer with fresh Paillier randomness.
+
+        Input is converted with int. Floats are truncated, not encoded as
+        fixed point; quantize them in the client before calling this method.
+
+        Args:
+            value (int): Plaintext integer, reduced modulo n.
+
+        Returns:
+            int: Ciphertext modulo n squared.
+        """
         n = self.public_key.n
         n2 = self.public_key.n2
 
@@ -84,6 +114,14 @@ class SecureDataTransformationModule:
         self,
         ciphertext: int,
     ) -> int:
+        """Refresh a ciphertext by multiplying it by an encryption of zero.
+
+        Args:
+            ciphertext (int): Ciphertext under this public key.
+
+        Returns:
+            int: Ciphertext with the same plaintext and fresh randomness.
+        """
         return (
             int(ciphertext)
             * self.encrypt(0)
@@ -93,6 +131,14 @@ class SecureDataTransformationModule:
         self,
         vector: Sequence[int],
     ) -> list[int]:
+        """Encrypt each coordinate of a record or query.
+
+        Args:
+            vector (Sequence[int]): Integer coordinates.
+
+        Returns:
+            list[int]: Ciphertexts in the same coordinate order.
+        """
         return [
             self.encrypt(
                 int(value)
@@ -104,6 +150,17 @@ class SecureDataTransformationModule:
         self,
         database: np.ndarray,
     ) -> list[list[int]]:
+        """Encrypt every row of an integer database.
+
+        This method does not validate the shape; tree construction validates
+        the shape when outsourcing a complete database.
+
+        Args:
+            database (numpy.ndarray): 2D integer array of records.
+
+        Returns:
+            list[list[int]]: Encrypted rows in their original order.
+        """
         return [
             self.encrypt_vector(
                 record
@@ -117,6 +174,25 @@ class SecureDataTransformationModule:
         leaf_capacity: int = 16,
         max_depth: int | None = None,
     ) -> None:
+        """Encrypt the database and its leaf index, then deliver both.
+
+        Database encryption happens before index validation. Logging
+        configuration errors may propagate after the cloud has been updated.
+
+        Args:
+            database (numpy.ndarray): Nonempty 2D integer array of shape (rows, dimensions).
+            leaf_capacity (int): Positive target records per leaf. Defaults to 16.
+            max_depth (int | None): Optional root-relative depth limit. Defaults to None.
+
+        Returns:
+            None: Updates the configured cloud database and index.
+
+        Raises:
+            RuntimeError: If no cloud is configured.
+            ValueError: If index construction rejects the shape or leaf capacity.
+            ImportError: If configured Rich logging is unavailable.
+            OSError: If configured log files cannot be created.
+        """
         if self.cloud is None:
             raise RuntimeError(
                 "CloudB no ha sido configurado."
@@ -188,6 +264,23 @@ class SecureDataTransformationModule:
         query: np.ndarray,
         k: int,
     ) -> tuple[list[int], list[tuple[int, ...]], list[int]]:
+        """Encrypt a query and request its nearest neighbors.
+
+        Cloud processing and logging exceptions propagate. Final decryption
+        belongs to the trusted client.
+
+        Args:
+            query (numpy.ndarray): One-dimensional integer coordinate vector.
+            k (int): Number of neighbors, between 1 and the database size.
+
+        Returns:
+            tuple[list[int], list[tuple[int, ...]], list[int]]: Visible IDs, encrypted
+                records, and encrypted squared distances, in neighbor order.
+
+        Raises:
+            RuntimeError: If no cloud, database, or index is configured.
+            ValueError: If k or the query dimension is invalid.
+        """
         if self.cloud is None:
             raise RuntimeError(
                 "CloudB no ha sido configurado."

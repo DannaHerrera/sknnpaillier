@@ -1,3 +1,5 @@
+"""Provide JSON logging with optional Rich output and rotating log files."""
+
 import json
 import logging
 import os
@@ -16,30 +18,93 @@ except ImportError:
 
 
 class DumbLogger:
-    """No-op logger that silently discards all log calls.
+    """Discard calls to the four supported logging methods.
 
-    Drop-in replacement for Log when logging is disabled — calling any
-    method on this object is a no-op with no logging I/O.
+    Returned by get_logger when logging is disabled. It performs no
+    logging I/O and is not a complete logging.Logger replacement.
     """
 
     def debug(self, *args, **kargs):
+        """Discard a logging call.
+
+        Args:
+            *args (object): Ignored positional arguments.
+            **kargs (object): Ignored keyword arguments.
+
+        Returns:
+            None: No record is emitted.
+        """
         return
     def info(self, *args, **kargs):
+        """Discard a logging call.
+
+        Args:
+            *args (object): Ignored positional arguments.
+            **kargs (object): Ignored keyword arguments.
+
+        Returns:
+            None: No record is emitted.
+        """
         return
     def warning(self, *args, **kargs):
+        """Discard a logging call.
+
+        Args:
+            *args (object): Ignored positional arguments.
+            **kargs (object): Ignored keyword arguments.
+
+        Returns:
+            None: No record is emitted.
+        """
         return
     def error(self, *args, **kargs):
+        """Discard a logging call.
+
+        Args:
+            *args (object): Ignored positional arguments.
+            **kargs (object): Ignored keyword arguments.
+
+        Returns:
+            None: No record is emitted.
+        """
         return
 
 
 class _DictToJsonFormatter(logging.Formatter):
-    """Converts dict log messages to indented JSON strings for RichHandler."""
+    """Render dictionary messages for the Rich console handler.
+
+    Attributes:
+        indent (int | None): JSON indentation width.
+    """
 
     def __init__(self, indent: int | None = None):
+        """Configure JSON indentation.
+
+        Args:
+            indent (int | None): Spaces per nesting level; None uses compact JSON.
+
+        Returns:
+            None: Stores the indentation setting.
+        """
         super().__init__()
         self.indent = indent
 
     def format(self, record):
+        """Format one log record.
+
+        Non-JSON values are converted with str. This formatter replaces dictionary
+        messages on the supplied record with JSON strings.
+
+        Args:
+            record (logging.LogRecord): Record to format.
+
+        Returns:
+            str: Formatted log text.
+
+        Raises:
+            TypeError: If the record contains unsupported JSON mapping keys.
+            ValueError: If JSON serialization detects a circular structure.
+        """
         if isinstance(record.msg, dict):
             record.msg = json.dumps(record.msg, indent=self.indent, default=str)
             record.args = ()
@@ -47,18 +112,40 @@ class _DictToJsonFormatter(logging.Formatter):
 
 
 class JsonFormatter(logging.Formatter):
-    """Logging formatter that serialises log records as JSON objects.
+    """Serialize log records as JSON objects.
 
-    Pass ``indent=4`` (or any int) for human-readable indented output.
-    Leave ``indent=None`` (default) for compact single-line NDJSON suitable
-    for log files and tools like ``jq``.
+    Attributes:
+        indent (int | None): JSON indentation width.
     """
 
     def __init__(self, indent: int | None = None):
+        """Configure JSON indentation.
+
+        Args:
+            indent (int | None): Spaces per nesting level; None uses compact JSON.
+
+        Returns:
+            None: Stores the indentation setting.
+        """
         super().__init__()
         self.indent = indent
 
     def format(self, record):
+        """Format one log record.
+
+        Non-JSON values are converted with str. Dictionary messages contribute top-level
+        fields and can replace the formatter metadata fields.
+
+        Args:
+            record (logging.LogRecord): Record to format.
+
+        Returns:
+            str: Formatted log text.
+
+        Raises:
+            TypeError: If the record contains unsupported JSON mapping keys.
+            ValueError: If JSON serialization detects a circular structure.
+        """
         thread_id = threading.current_thread().name
         log_data = {
             'timestamp': self.formatTime(record),
@@ -74,17 +161,11 @@ class JsonFormatter(logging.Formatter):
 
 
 class Log(logging.Logger):
-    """Structured JSON logger with rotating file and console handlers.
+    """Create a JSON logger with console output and optional rotating files.
 
-    Extends ``logging.Logger`` to add JSON-formatted output, optional
-    timed-rotating file handlers, and a dedicated error log file.  When
-    ``disabled=True`` no handlers are attached and no filesystem paths
-    are created, making it safe to instantiate in environments where
-    disk I/O is unavailable or unwanted.
-
-    When ``use_rich=True`` the console handler uses ``RichHandler`` with
-    ``JSONHighlighter`` for syntax-coloured JSON output.  Requires
-    ``pip install rich``.
+    Configuration parameters set to None use environment defaults.
+    Direct construction with disabled=True adds a NullHandler and creates
+    no files. get_logger instead returns DumbLogger for disabled logging.
     """
 
     def __init__(self,
@@ -105,6 +186,38 @@ class Log(logging.Logger):
                  interval: int | None = None,
                  use_rich: bool | None = None,
     ):
+        """Configure logging handlers and optional file rotation.
+
+        SKNN_LOG_JSON_INDENT controls JSON indentation. The normal file excludes
+        ERROR and higher records; the error file includes them. Parent directories
+        of custom output paths are not created automatically.
+
+        Args:
+            formatter (logging.Formatter | None): File formatter; defaults to JsonFormatter.
+            console_formatter (logging.Formatter | None): Console formatter; defaults to JSON.
+            name (str): Logger name. Defaults to "sknn".
+            log_level (int | None): Global level; SKNN_LOG_LEVEL defaults to DEBUG.
+            path (str | None): Log directory; SKNN_LOG_PATH defaults to .sknn/log.
+            disabled (bool | None): Disable output; SKNN_LOG_DISABLED defaults to false.
+            console_handler_level (int | None): Console threshold; direct default is DEBUG.
+            file_handler_level (int | None): File threshold; default is INFO.
+            error_log (bool | None): Enable a separate error file; default is false.
+            filename (str | None): File basename, otherwise the logger name.
+            output_path (str | None): Normal log filename override.
+            error_output_path (str | None): Error log filename override.
+            to_file (bool | None): Enable the normal file handler; default is false.
+            when (str | None): Rotation unit; environment default is "m" (minutes).
+            interval (int | None): Rotation interval; environment default is 10.
+            use_rich (bool | None): Enable Rich output; environment default is false.
+
+        Returns:
+            None: Initializes this logger and its handlers.
+
+        Raises:
+            ImportError: If Rich is requested but not installed.
+            ValueError: If the rotation interval, rotation unit, or log level is invalid.
+            OSError: If a configured log directory or file cannot be opened.
+        """
         def _bool(value: str) -> bool:
             return value.lower() in ("1", "true", "yes")
 
@@ -193,15 +306,25 @@ class Log(logging.Logger):
 
 
 def get_logger(name: str = "sknn", **kwargs) -> Log | DumbLogger:
-    """Fábrica de loggers del proyecto.
+    """Create an enabled logger or a no-output replacement.
 
-    Devuelve ``DumbLogger`` (sin I/O de logging) cuando el logging está
-    deshabilitado con ``SKNN_LOG_DISABLED=1``; en caso contrario devuelve
-    un ``Log`` con salida JSON a consola en nivel INFO por defecto
-    (ajustable con ``SKNN_LOG_CONSOLE_LEVEL=DEBUG``).
+    Disabled logging is resolved before constructing handlers. Unlike direct
+    Log construction, the factory defaults the console threshold to INFO
+    unless an argument or SKNN_LOG_CONSOLE_LEVEL overrides it.
 
-    El nivel global del logger sigue siendo DEBUG (o el que fije
-    ``SKNN_LOG_LEVEL``); el filtro por nivel lo aplica cada handler.
+    Args:
+        name (str): Logger name. Defaults to "sknn".
+        **kwargs (object): Log constructor options; explicit values take
+            precedence over environment defaults.
+
+    Returns:
+        Log | DumbLogger: A new logger instance, not a cached logger by name.
+
+    Raises:
+        ImportError: If Rich is requested but not installed.
+        ValueError: If logging configuration contains invalid rotation or level values.
+        OSError: If configured directories or files cannot be opened.
+        TypeError: If an unsupported constructor keyword is provided.
     """
     disabled = kwargs.pop("disabled", None)
     if disabled is None:

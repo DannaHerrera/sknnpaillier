@@ -10,75 +10,84 @@ El redondeo aproxima las distancias; conservar el top-k no es una garantía
 general. Este ejemplo lo verifica para los datos elegidos.
 """
 
+import os
+from pathlib import Path
+
 import numpy as np
+from dotenv import load_dotenv
 
 from sknnpaillier import (
     CloudBQueryProcessingModule,
     KeyManagementModule,
     SecureDataTransformationModule,
+    resolve_key_bits,
 )
+from sknnpaillier.utils import dequantize_distance, quantize
 
 
-def _validate_scale(scale: int) -> None:
-    if (
-        isinstance(scale, (bool, np.bool_))
-        or not isinstance(scale, (int, np.integer))
-        or scale <= 0
-    ):
-        raise ValueError("La escala debe ser un entero positivo.")
-
-
-def quantize(x: np.ndarray, scale: int = 1000) -> np.ndarray:
-    """Redondea coordenadas normalizadas a enteros de punto fijo."""
-    _validate_scale(scale)
-    values = np.asarray(x, dtype=float)
-    if not np.all(np.isfinite(values)) or np.any(
-        (values < 0.0) | (values > 1.0)
-    ):
-        raise ValueError("Las coordenadas deben ser finitas y estar en [0, 1].")
-    scaled = np.rint(values * scale)
-    # Evita desbordar el entero de NumPy con escalas ajenas al ejemplo.
-    if np.any(scaled >= float(np.iinfo(int).max)):
-        raise ValueError("La escala excede el rango entero disponible.")
-    return scaled.astype(int)
-
-
-def dequantize_distance(d_sq: int, scale: int = 1000) -> float:
-    """Devuelve distancia cuadrada aproximada, sin aplicar raíz."""
-    _validate_scale(scale)
-    return int(d_sq) / int(scale) ** 2
+def load_settings() -> tuple[int, int, int, int | None]:
+    """Load only this example directory's .env; the shell takes precedence."""
+    load_dotenv(Path(__file__).resolve().parent / ".env", override=False)
+    key_bits = resolve_key_bits(os.getenv("SECURITY_LEVEL", "80"))
+    try:
+        k = int(os.getenv("SKNN_EXAMPLE_K", "3"))
+        capacity = int(os.getenv("SKNN_EXAMPLE_LEAF_CAPACITY", "2"))
+        raw_depth = os.getenv("SKNN_EXAMPLE_MAX_DEPTH", "").strip()
+        depth = int(raw_depth) if raw_depth else None
+    except ValueError as error:
+        raise ValueError("Parámetros del ejemplo: se requieren enteros.") from error
+    if k < 1 or k % 2 == 0:
+        raise ValueError("SKNN_EXAMPLE_K debe ser positivo e impar.")
+    if capacity < 1 or (depth is not None and depth < 0):
+        raise ValueError("Capacidad >= 1 y profundidad >= 0 requeridas.")
+    disabled = os.environ.setdefault("SKNN_LOG_DISABLED", "1").lower()
+    if disabled not in ("0", "1", "true", "false", "yes", "no"):
+        raise ValueError("SKNN_LOG_DISABLED debe ser una bandera booleana.")
+    return key_bits, k, capacity, depth
 
 
 def main() -> None:
     """Compara el top-k seguro con referencias enteras y flotantes."""
-    scale = 1000
-    k = 3
-    rng = np.random.default_rng(42)
+    key_bits, k, leaf_capacity, max_depth = load_settings()
+    try:
+        scale = int(os.getenv("SKNN_EXAMPLE_SCALE", "1000"))
+        seed = int(os.getenv("SKNN_EXAMPLE_SEED", "42"))
+    except ValueError as error:
+        raise ValueError("Escala y semilla deben ser enteros.") from error
+    if seed < 0:
+        raise ValueError("SKNN_EXAMPLE_SEED debe ser no negativa.")
+    rng = np.random.default_rng(seed)
     near_points = np.array(
         [[0.2012, 0.1003], [0.1004, 0.3007], [0.4002, 0.1006]]
     )
     database = np.vstack((near_points, rng.uniform(0.6, 1.0, size=(13, 2))))
     labels = np.array([0, 1, 0] + [0] * 6 + [1] * 7, dtype=int)
+    if k > len(database):
+        raise ValueError("SKNN_EXAMPLE_K excede el tamaño de la base.")
     query = np.array([0.1004, 0.0997])
-    database_int = quantize(database, scale)
-    query_int = quantize(query, scale)
+    database_int = quantize(database, scale_factor=scale)
+    query_int = quantize(query, scale_factor=scale)
 
     print("[1/5] Datos: 16 puntos 2D en [0, 1], etiquetas balanceadas.")
     print(f"      Escala={scale} | k={k}")
     print(f"      Registro: {database[0].tolist()} -> "
           f"{database_int[0].tolist()}")
+    print(f"      Módulo Paillier: {key_bits} bits")
     print(f"      Consulta: {query.tolist()} -> {query_int.tolist()}")
 
     print("[2/5] Generando claves Paillier y conectando módulos...",
           flush=True)
     # Tamaño demostrativo; no es un parámetro de producción.
-    key_manager = KeyManagementModule(1024)
+    key_manager = KeyManagementModule(key_bits)
     transformer = SecureDataTransformationModule(key_manager.public_key)
     cloud = CloudBQueryProcessingModule(transformer, key_manager)
     transformer.set_cloud(cloud)
 
     print("[3/5] Cifrando enteros e indexando sus regiones...", flush=True)
-    transformer.send_database_to_cloud(database_int, leaf_capacity=2)
+    transformer.send_database_to_cloud(
+        database_int, leaf_capacity=leaf_capacity,
+        max_depth=max_depth,
+    )
 
     print("[4/5] Consultando con coordenadas cuantizadas...", flush=True)
     ids, encrypted_records, encrypted_distances = (
@@ -96,7 +105,7 @@ def main() -> None:
     ]
     distances = [key_manager.decrypt(value) for value in encrypted_distances]
     approximate_distances = [
-        dequantize_distance(distance, scale) for distance in distances
+        dequantize_distance(distance, scale_factor=scale) for distance in distances
     ]
 
     # Referencias de validación en el cliente, fuera del protocolo seguro.

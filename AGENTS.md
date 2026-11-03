@@ -34,3 +34,11 @@
 - `scripts/` está fuera de alcance hasta nueva indicación. Sus imports antiguos quedan pendientes de migración; no crear puentes de compatibilidad.
 - Importar la biblioteca no debe generar llaves, crear handlers ni archivos o ejecutar consultas. Obtener los loggers durante las operaciones.
 - La API pública se exporta desde `sknnpaillier/__init__.py`; mantener imports internos relativos y evitar importar scripts desde la biblioteca.
+
+## Automatización y configuración
+- `SECURITY_LEVEL` acepta únicamente `test`, 80, 112 o 128 (también cadenas numéricas). Usar `resolve_key_bits`; nunca interpretar 128 como módulo corto. No añadir alias o tamaños directos sin una nueva decisión explícita.
+- `python-dotenv` pertenece a dev; cargar solo el .env local explícito con override=False. No cargar archivos de entorno al importar ejemplos o biblioteca.
+- Versionar .env.example, no .env locales. CI utiliza predeterminados y SECURITY_LEVEL=test.
+- El grupo docs es opcional y requiere Python >=3.11; usar `poetry run zensical build --clean` para construir.
+- Los cambios de dependencias requieren que el usuario regenere y guarde poetry.lock antes del PR cuando no esté autorizada la resolución local.
+- Los workflows construyen desde el lock; no regenerarlo en CI. Pages despliega artefactos, sin pushes de una rama de archivos generados.
