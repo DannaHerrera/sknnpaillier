@@ -13,12 +13,12 @@ from pathlib import Path
 
 import numpy as np
 from dotenv import load_dotenv
+from sknnpaillier.utils import resolve_key_bits
 
 from sknnpaillier import (
     CloudBQueryProcessingModule,
     KeyManagementModule,
-    SecureDataTransformationModule,
-    resolve_key_bits,
+    SecureDataTransformationModule
 )
 
 

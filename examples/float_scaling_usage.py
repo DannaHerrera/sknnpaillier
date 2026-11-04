@@ -16,13 +16,13 @@ from pathlib import Path
 import numpy as np
 from dotenv import load_dotenv
 
+
 from sknnpaillier import (
     CloudBQueryProcessingModule,
     KeyManagementModule,
     SecureDataTransformationModule,
-    resolve_key_bits,
 )
-from sknnpaillier.utils import dequantize_distance, quantize
+from sknnpaillier.utils import dequantize_distance, quantize, resolve_key_bits
 
 
 def load_settings() -> tuple[int, int, int, int | None]:

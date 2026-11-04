@@ -6,10 +6,10 @@ import time
 from dataclasses import dataclass
 from typing import Callable
 
-from .log import get_logger
-from .utils import generate_prime as generate_prime
-from .utils import is_probable_prime as is_probable_prime
-from .utils import lcm as lcm
+from sknnpaillier.log import get_logger
+from sknnpaillier.utils import generate_prime as generate_prime
+from sknnpaillier.utils import is_probable_prime as is_probable_prime
+from sknnpaillier.utils import lcm as lcm
 
 
 @dataclass(frozen=True)
@@ -94,9 +94,9 @@ class KeyManagementModule:
         )
         logger = get_logger("sknn.keym")
         logger.debug({
-            "evento": "generacion_llaves",
+            "event": "key_generation",
             "key_bits": key_bits,
-            "tiempo_s": round(
+            "time_s": round(
                 time.perf_counter() - inicio,
                 6,
             ),
@@ -112,8 +112,6 @@ class KeyManagementModule:
             PublicKey: The public Paillier modulus.
         """
         return self._public_key
-
-    # DESCIFRADO INTERNO
 
     def decrypt(
         self,
@@ -289,7 +287,7 @@ class KeyManagementModule:
         """
         if key_bits < 128:
             raise ValueError(
-                "La llave debe tener al menos 128 bits."
+                "The key must have at least 128 bits."
             )
 
         first_bits = (

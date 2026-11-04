@@ -1,16 +1,16 @@
 """Expose the public API for Paillier-based nearest-neighbor search."""
 
-from .cloud_b import CloudBQueryProcessingModule
-from .config import resolve_key_bits
-from .kd_tree import EncryptedKDLeaf, EncryptedKDTree, build_encrypted_kd_tree
-from .key_m import KeyManagementModule, PublicKey
-from .secure_data_t import SecureDataTransformationModule
-from .utils import (
+from sknnpaillier.cloud_b import CloudBQueryProcessingModule
+from sknnpaillier.kd_tree import EncryptedKDLeaf, EncryptedKDTree, build_encrypted_kd_tree
+from sknnpaillier.key_m import KeyManagementModule, PublicKey
+from sknnpaillier.secure_data_t import SecureDataTransformationModule
+from sknnpaillier.utils import (
     dequantize_distance,
     generate_prime,
     is_probable_prime,
     lcm,
     quantize,
+    resolve_key_bits
 )
 
 __all__ = [

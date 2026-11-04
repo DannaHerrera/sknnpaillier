@@ -16,10 +16,9 @@ from sklearn.model_selection import train_test_split
 from sknnpaillier import (
     CloudBQueryProcessingModule,
     KeyManagementModule,
-    SecureDataTransformationModule,
-    resolve_key_bits,
+    SecureDataTransformationModule
 )
-from sknnpaillier.utils import quantize
+from sknnpaillier.utils import quantize, resolve_key_bits
 
 
 @dataclass(frozen=True)

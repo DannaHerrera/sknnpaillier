@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from typing import Callable
 
 import numpy as np
-
+import numpy.typing as npt
 
 @dataclass(frozen=True)
 class EncryptedKDLeaf:
@@ -76,7 +76,7 @@ class _PlainKDLeaf:
 
 
 def _validate_database(
-    database: np.ndarray,
+    database: npt.NDArray,
 ) -> tuple[int, int]:
     """Check the database shape.
 
@@ -91,26 +91,26 @@ def _validate_database(
     """
     if database.ndim != 2:
         raise ValueError(
-            "La base de datos debe ser una matriz 2D."
+            "The database must be a 2D array."
         )
 
     rows, dimensions = database.shape
 
     if rows == 0:
         raise ValueError(
-            "La base de datos no puede estar vacía."
+            "The database cannot be empty."
         )
 
     if dimensions == 0:
         raise ValueError(
-            "Debe existir al menos un atributo."
+            "There must be at least one attribute."
         )
 
     return rows, dimensions
 
 
 def _build_plain_kd_leaves(
-    database: np.ndarray,
+    database: npt.NDArray,
     leaf_capacity: int,
     stats: dict[str, int] | None = None,
     max_depth: int | None = None,
@@ -135,7 +135,7 @@ def _build_plain_kd_leaves(
 
     if leaf_capacity <= 0:
         raise ValueError(
-            "leaf_capacity debe ser mayor que cero."
+            "leaf_capacity must be greater than zero."
         )
 
     root_lb = [
@@ -308,7 +308,7 @@ def _build_plain_kd_leaves(
 
 
 def build_encrypted_kd_tree(
-    database: np.ndarray,
+    database: npt.NDArray,
     encrypt_value: Callable[[int], int],
     leaf_capacity: int = 16,
     max_depth: int | None = None,

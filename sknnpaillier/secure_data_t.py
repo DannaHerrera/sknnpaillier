@@ -10,10 +10,11 @@ import time
 from typing import TYPE_CHECKING, Sequence
 
 import numpy as np
+import numpy.typing as npt
 
-from .kd_tree import build_encrypted_kd_tree
-from .key_m import PublicKey
-from .log import get_logger
+from sknnpaillier.kd_tree import build_encrypted_kd_tree
+from sknnpaillier.key_m import PublicKey
+from sknnpaillier.log import get_logger
 
 if TYPE_CHECKING:
     from .cloud_b import CloudBQueryProcessingModule
@@ -148,7 +149,7 @@ class SecureDataTransformationModule:
 
     def encrypt_database(
         self,
-        database: np.ndarray,
+        database: npt.NDArray,
     ) -> list[list[int]]:
         """Encrypt every row of an integer database.
 
@@ -170,7 +171,7 @@ class SecureDataTransformationModule:
 
     def send_database_to_cloud(
         self,
-        database: np.ndarray,
+        database: npt.NDArray,
         leaf_capacity: int = 16,
         max_depth: int | None = None,
     ) -> None:
@@ -195,7 +196,7 @@ class SecureDataTransformationModule:
         """
         if self.cloud is None:
             raise RuntimeError(
-                "CloudB no ha sido configurado."
+                "CloudB not configured."
             )
 
         inicio = time.perf_counter()
@@ -239,29 +240,29 @@ class SecureDataTransformationModule:
 
         logger = get_logger("sknn.securedata")
         logger.debug({
-            "evento": "outsourcing_desglose",
-            "registros": int(len(database)),
-            "dimensiones": int(database.shape[1]),
-            "hojas": len(encrypted_kd_tree.leaves),
+            "event": "outsourcing",
+            "registers": int(len(database)),
+            "dimensions": int(database.shape[1]),
+            "leaves": len(encrypted_kd_tree.leaves),
             "leaf_capacity": leaf_capacity,
             "max_depth": max_depth,
-            "cifrado_bd_s": round(cifrado_bd_s, 6),
-            "kdtree_construccion_y_bordes_s": round(
+            "encrypted_db_s": round(cifrado_bd_s, 6),
+            "kdtree_construction_and_borders_s": round(
                 kdtree_s,
                 6,
             ),
         })
 
         logger.info({
-            "evento": "outsourcing_total",
-            "registros": int(len(database)),
-            "hojas": len(encrypted_kd_tree.leaves),
-            "tiempo_s": round(total_s, 6),
+            "event": "outsourcing_total",
+            "registers": int(len(database)),
+            "leaves": len(encrypted_kd_tree.leaves),
+            "time_s": round(total_s, 6),
         })
 
     def send_query_to_cloud(
         self,
-        query: np.ndarray,
+        query: npt.NDArray,
         k: int,
     ) -> tuple[list[int], list[tuple[int, ...]], list[int]]:
         """Encrypt a query and request its nearest neighbors.
@@ -283,7 +284,7 @@ class SecureDataTransformationModule:
         """
         if self.cloud is None:
             raise RuntimeError(
-                "CloudB no ha sido configurado."
+                "CloudB not configured."
             )
 
         encrypted_query = (

@@ -6,12 +6,12 @@ from unittest.mock import patch
 
 import pytest
 from dotenv import load_dotenv
+from sknnpaillier.utils import resolve_key_bits
 
 from sknnpaillier import (
     CloudBQueryProcessingModule,
     KeyManagementModule,
-    SecureDataTransformationModule,
-    resolve_key_bits,
+    SecureDataTransformationModule
 )
 
 

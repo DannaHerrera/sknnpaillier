@@ -9,10 +9,10 @@ import time
 from dataclasses import dataclass
 from typing import Sequence
 
-from .kd_tree import EncryptedKDLeaf, EncryptedKDTree
-from .key_m import KeyManagementModule
-from .log import get_logger
-from .secure_data_t import SecureDataTransformationModule
+from sknnpaillier.kd_tree import EncryptedKDLeaf, EncryptedKDTree
+from sknnpaillier.key_m import KeyManagementModule
+from sknnpaillier.log import get_logger
+from sknnpaillier.secure_data_t import SecureDataTransformationModule
 
 
 @dataclass
@@ -329,8 +329,8 @@ class CloudBQueryProcessingModule:
             != len(encrypted_query)
         ):
             raise ValueError(
-                "Registro y consulta deben tener "
-                "la misma dimensión."
+                "Record and query must have "
+                "the same dimension."
             )
 
         encrypted_distance = (
@@ -563,7 +563,7 @@ class CloudBQueryProcessingModule:
         """
         if self.encrypted_kd_tree is None:
             raise RuntimeError(
-                "KD-tree no configurado."
+                "KD-tree not configured."
             )
 
         base = (
@@ -646,7 +646,7 @@ class CloudBQueryProcessingModule:
     ) -> int:
         if self.encrypted_database is None:
             raise RuntimeError(
-                "BD cifrada no configurada."
+                "Encrypted database not configured."
             )
 
         evaluations = 0
@@ -705,7 +705,7 @@ class CloudBQueryProcessingModule:
     ) -> list[EncryptedKDLeaf]:
         if self.encrypted_kd_tree is None:
             raise RuntimeError(
-                "KD-tree no configurado."
+                "KD-tree not configured."
             )
 
         return [
@@ -735,7 +735,7 @@ class CloudBQueryProcessingModule:
         """
         if self.encrypted_kd_tree is None:
             raise RuntimeError(
-                "KD-tree no configurado."
+                "KD-tree not configured."
             )
 
         best_leaf = None
@@ -770,7 +770,7 @@ class CloudBQueryProcessingModule:
 
         if best_leaf is None:
             raise RuntimeError(
-                "El KD-tree no contiene hojas."
+                "KD-tree not configured."
             )
 
         return best_leaf
@@ -806,12 +806,12 @@ class CloudBQueryProcessingModule:
         """
         if self.encrypted_database is None:
             raise RuntimeError(
-                "CloudB no recibió la BD cifrada."
+                "CloudB did not receive the encrypted database."
             )
 
         if self.encrypted_kd_tree is None:
             raise RuntimeError(
-                "CloudB no recibió el KD-tree."
+                "CloudB did not receive the encrypted KD-tree."
             )
 
         if not (
@@ -820,7 +820,7 @@ class CloudBQueryProcessingModule:
             <= len(self.encrypted_database)
         ):
             raise ValueError(
-                "k fuera de rango."
+                "k is out of range."
             )
 
         if (
@@ -828,7 +828,7 @@ class CloudBQueryProcessingModule:
             != self.encrypted_kd_tree.dimensions
         ):
             raise ValueError(
-                "Dimensión de consulta incorrecta."
+                "Dimension of query is incorrect."
             )
 
         # 1. ENCRYPTED KD-TREE
@@ -966,28 +966,28 @@ class CloudBQueryProcessingModule:
 
         logger = get_logger("sknn.cloudb")
         logger.debug({
-            "evento": "query_fases",
+            "event": "query_phases",
             "k": k,
-            "fase1_busqueda_hojas_s": round(
+            "phase1_search_leaves_s": round(
                 t_fase1 - t_inicio, 6
             ),
-            "evaluacion_inicial_s": round(
+            "initial_evaluation_s": round(
                 t_eval_inicial - t_fase1, 6
             ),
-            "fase2_verificacion_s": round(
+            "phase2_verification_s": round(
                 t_fase2 - t_eval_inicial, 6
             ),
-            "resultados_s": round(
+            "results_s": round(
                 t_fin - t_fase2, 6
             ),
             **self.last_query_stats,
         })
 
         logger.info({
-            "evento": "query_total",
+            "event": "query_total",
             "k": k,
-            "distancias_evaluadas": distance_evaluations,
-            "tiempo_s": round(
+            "evaluated_distances": distance_evaluations,
+            "time_s": round(
                 t_fin - t_inicio, 6
             ),
         })
