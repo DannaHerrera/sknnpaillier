@@ -1,0 +1,50 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Datos y artefactos generados (no subir al repo)
+*.zip
+*.log
+*.npy
+*.npz
+data/
+salida_preprocesamiento/
+
+# Resultados de experimentos (regenerables al ejecutar los scripts)
+resultados/
+resultados_*/
+runs/
+
+# Gráficas generadas
+*.png
+
+# Cobertura y caches de herramientas
+.coverage
+.pytest_cache/
+.ruff_cache/
+
+# Local configuration; templates remain versioned
+.env
+.env.*
+!.env.example
+
+# Generated documentation
+site/
+.cache/
+
+# Logs del proyecto
+.sknn/
+
+# Documentos locales de trabajo (no se versionan)
+report.md
+plan.md
+AGENTS.md
+
+# SO / editores
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
