@@ -1,0 +1,39 @@
+[project]
+site_name = "sknnpaillier"
+site_description = "Encrypted k-NN search with Paillier and KD-tree leaf regions"
+site_url = "https://shanelreyes.github.io/sknnpaillier/"
+repo_url = "https://github.com/ShanelReyes/sknnpaillier"
+docs_dir = "docs"
+site_dir = "site"
+nav = [
+  { "Introduction" = "index.md" },
+  { "Requirements and Installation" = "installation.md" },
+  { "Environment Variables Reference" = "environment.md" },
+  { "Usage" = "usage.md" },
+  { "API Reference" = [
+      { "Overview" = "reference/api.md" },
+      { "Cloud Query Processing" = "reference/cloud_b.md" },
+      { "KD-Tree Index" = "reference/kd_tree.md" },
+      { "Key Management" = "reference/key_m.md" },
+      { "Secure Data Transformation" = "reference/secure_data_t.md" },
+      { "Shared Utilities" = "reference/utils.md" },
+      { "Configuration and Logging" = "reference/configuration.md" },
+  ] },
+]
+
+[project.theme]
+language = "en"
+
+[project.plugins.mkdocstrings.handlers.python]
+paths = ["."]
+
+[project.plugins.mkdocstrings.handlers.python.options]
+show_root_heading = true
+show_signature_annotations = true
+show_source = true
+members_order = "source"
+filters = ["!^_"]
+
+docstring_style = "google"
+merge_init_into_class = true
+docstring_options = { ignore_init_summary = true }
