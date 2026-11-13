@@ -4,9 +4,12 @@ Build and encrypt the spatial index before outsourcing the database.
 
 from __future__ import annotations
 
+from asyncio.log import logger
+from logging import root
 import math
 import secrets
 import time
+from venv import logger
 from typing import TYPE_CHECKING, Sequence
 
 import numpy as np
@@ -169,6 +172,42 @@ class SecureDataTransformationModule:
             for record in database
         ]
 
+
+    @staticmethod
+    def count_kd_nodes(root):
+        """
+        Cuenta los nodos internos, las hojas y la
+        profundidad máxima del KD-Tree.
+        """
+        total_nodes = 0
+        total_leaves = 0
+        max_depth = 0
+
+        stack = [(root, 0)]
+
+        while stack:
+            node, depth = stack.pop()
+
+            total_nodes += 1
+            max_depth = max(max_depth, depth)
+
+            if node.record_ids is not None:
+                total_leaves += 1
+                continue
+
+            if node.left is not None:
+                stack.append((node.left, depth + 1))
+
+            if node.right is not None:
+                stack.append((node.right, depth + 1))
+
+        return {
+            "total_nodes": total_nodes,
+            "total_leaves": total_leaves,
+            "max_depth": max_depth,
+        }
+
+    
     def send_database_to_cloud(
         self,
         database: npt.NDArray,
@@ -234,29 +273,38 @@ class SecureDataTransformationModule:
             encrypted_kd_tree
         )
 
+        tree_stats = self.count_kd_nodes(
+            encrypted_kd_tree.root
+        )
+
         total_s = (
             time.perf_counter() - inicio
         )
 
+        
         logger = get_logger("sknn.securedata")
+
         logger.debug({
             "event": "outsourcing",
             "registers": int(len(database)),
             "dimensions": int(database.shape[1]),
-            "leaves": len(encrypted_kd_tree.leaves),
+            "leaves": tree_stats["total_leaves"],
+            "total_nodes": tree_stats["total_nodes"],
+            "tree_depth": tree_stats["max_depth"],
             "leaf_capacity": leaf_capacity,
             "max_depth": max_depth,
             "encrypted_db_s": round(cifrado_bd_s, 6),
             "kdtree_construction_and_borders_s": round(
-                kdtree_s,
-                6,
+                kdtree_s, 6
             ),
-        })
+        })  
 
         logger.info({
             "event": "outsourcing_total",
             "registers": int(len(database)),
-            "leaves": len(encrypted_kd_tree.leaves),
+            "leaves": tree_stats["total_leaves"],
+            "total_nodes": tree_stats["total_nodes"],
+            "tree_depth": tree_stats["max_depth"],
             "time_s": round(total_s, 6),
         })
 

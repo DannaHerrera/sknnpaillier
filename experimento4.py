@@ -7,10 +7,83 @@ import zipfile
 from collections import Counter
 from pathlib import Path
 
+import matplotlib.pyplot as plt
+from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
+
 import numpy as np
-from CloudB import CloudBQueryProcessingModule
-from KeyM import KeyManagementModule
-from SecureDataT import SecureDataTransformationModule
+from sknnpaillier.cloud_b import CloudBQueryProcessingModule
+from sknnpaillier.key_m import KeyManagementModule
+from sknnpaillier.secure_data_t import SecureDataTransformationModule
+
+
+
+def guardar_matriz_confusion(
+    reales: list[str],
+    predichas: list[str],
+    carpeta: Path,
+    nombre: str,
+) -> None:
+    """
+    Genera una matriz de confusión para las
+    26 letras y la guarda como PNG y CSV.
+    """
+
+    if len(reales) != len(predichas) or not reales:
+        raise ValueError("Se necesitan predicciones y etiquetas reales alineadas.")
+
+    carpeta.mkdir(parents=True, exist_ok=True)
+    clases = list("ABCDEFGHIJKLMNOPQRSTUVWXYZ")
+
+    matriz = confusion_matrix(
+        reales,
+        predichas,
+        labels=clases,
+    )
+
+    # Guardar matriz numérica en CSV
+    ruta_csv = carpeta / f"{nombre}.csv"
+
+    with ruta_csv.open(
+        "w", newline="", encoding="utf-8"
+    ) as archivo:
+        escritor = csv.writer(archivo)
+        escritor.writerow(["Real / Predicha"] + clases)
+
+        for letra, fila in zip(clases, matriz):
+            escritor.writerow([letra] + fila.tolist())
+
+    # Generar matriz como imagen
+    fig, ax = plt.subplots(figsize=(14, 12))
+
+    visualizacion = ConfusionMatrixDisplay(
+        confusion_matrix=matriz,
+        display_labels=clases,
+    )
+
+    visualizacion.plot(
+        ax=ax,
+        cmap="Blues",
+        values_format="d",
+        xticks_rotation=90,
+        colorbar=True,
+    )
+
+    ax.set_title(
+        f"Matriz de confusión - {nombre}"
+    )
+
+    ax.set_xlabel("Clase predicha")
+    ax.set_ylabel("Clase real")
+
+    plt.tight_layout()
+
+    fig.savefig(
+        carpeta / f"{nombre}.png",
+        dpi=300,
+        bbox_inches="tight",
+    )
+
+    plt.close(fig)
 
 
 def cargar_letras(ruta: Path, semilla: int):
@@ -28,10 +101,15 @@ def cargar_letras(ruta: Path, semilla: int):
 def cargar_preprocesado(carpeta: Path, db_rows: int, consultas: int,
                         atributos: int, semilla: int, bits_escala: int):
     """Carga el dataset_n de benchmark; conserva IDs originales y clases."""
-    if db_rows not in (10, 30, 50, 100):
-        raise ValueError("db-rows debe ser 10, 30, 50 o 100")
+    """if db_rows not in (10, 30, 50, 100):
+        raise ValueError("db-rows debe ser 10, 30, 50 o 100")"""
+
+    if db_rows < 1:
+        raise ValueError("db-rows debe ser mayor que cero")
+    
     if not 0 <= bits_escala <= 20:
         raise ValueError("fixed-point-bits fuera de rango")
+    
     carpeta_n = carpeta / f"dataset_{db_rows}"
     X = np.load(carpeta_n / "X.npy", allow_pickle=False)
     codigos = np.load(carpeta_n / "clases.npy", allow_pickle=False)
@@ -174,6 +252,7 @@ def append_medicion(path, fila):
 
 
 def main():
+    inicio_programa = time.perf_counter()
     parser = argparse.ArgumentParser(
         description="Consultas SKNN-QP con Paillier; sin busqueda kNN en texto plano"
     )
@@ -194,9 +273,17 @@ def main():
     args = parser.parse_args()
     print("\nCONFIGURACIÓN RECIBIDA:")
     print(vars(args))
-    if not (1 <= args.k <= args.db_rows and args.queries >= 1 and
+    """if not (1 <= args.k <= args.db_rows and args.queries >= 1 and
             (args.db_rows in (10, 30, 50, 100) and args.queries <= 10)):
-        parser.error("Requiere 1 <= k <= db-rows, db-rows en {10,30,50,100}, queries entre 1 y 10")
+        parser.error("Requiere 1 <= k <= db-rows, db-rows en {10,30,50,100}, queries entre 1 y 10")"""
+
+
+    if not (1 <= args.k <= args.db_rows and args.queries >= 1
+            and args.db_rows >= 1):
+        parser.error(
+            "Requiere 1 <= k <= db-rows, db-rows >= 1 y queries >= 1"
+        )
+    
     if args.attributes < 1 or args.attributes > 16 or args.max_depth < 0:
         parser.error("attributes debe estar entre 1 y 16, max-depth >= 0")
     if args.key_bits < 128 or args.leaf_capacity < 1:
@@ -322,7 +409,31 @@ def main():
         print("¿Predicción correcta?:", str(predicha) == str(etiqueta_real))
         print("===============================\n")
 
-        estadisticas = cloud.last_query_stats.copy()
+        # Métricas informadas por CloudB. No se inventan valores de
+        # nodos visitados ni ramas podadas si el módulo no los registra.
+        estadisticas = dict(getattr(cloud, "last_query_stats", {}) or {})
+        distancias_evaluadas = estadisticas.get("distance_evaluations")
+        total_hojas = estadisticas.get("total_leaves")
+        nodos_visitados = estadisticas.get("visited_nodes")
+        hojas_visitadas = estadisticas.get("visited_leaves")
+        ramas_podadas = estadisticas.get("pruned_subtrees")
+        porcentaje_evaluado = (
+            100.0 * distancias_evaluadas / args.db_rows
+            if isinstance(distancias_evaluadas, (int, float)) else None
+        )
+
+        print("\n=== DIAGNÓSTICO DEL ÍNDICE KD-TREE ===")
+        print("Registros totales:", args.db_rows)
+        print("Distancias evaluadas:", distancias_evaluadas)
+        print("Porcentaje evaluado:", porcentaje_evaluado)
+        print("Total de hojas:", total_hojas)
+        print("Nodos visitados:", nodos_visitados)
+        print("Hojas visitadas:", hojas_visitadas)
+        print("Subárboles podados:", ramas_podadas)
+        if args.k == args.db_rows:
+            print("AVISO: k=n; se necesitan todos los registros y no se espera poda kNN.")
+        print("========================================\n")
+
         filas.append({
             "consulta": num,
             "etiqueta_real": str(etiqueta_real),
@@ -339,10 +450,14 @@ def main():
             "tiempo_consulta_cifrada_s": tiempo_consulta,
             "tiempo_descifrado_final_s": tiempo_descifrado,
             "tiempo_consulta_total_s": tiempo_consulta + tiempo_descifrado,
-            "distancias_evaluadas": estadisticas["distance_evaluations"],
-            "hojas_totales": estadisticas["total_leaves"],
-            "hojas_iniciales": estadisticas["initial_leaves"],
-            "hojas_adicionales": estadisticas["additional_leaves"],
+            "distancias_evaluadas": distancias_evaluadas,
+            "porcentaje_registros_evaluados": porcentaje_evaluado,
+            "hojas_totales": total_hojas,
+            "hojas_iniciales": estadisticas.get("initial_leaves"),
+            "hojas_adicionales": estadisticas.get("additional_leaves"),
+            "nodos_visitados": nodos_visitados,
+            "hojas_visitadas": hojas_visitadas,
+            "subarboles_podados": ramas_podadas,
             "distancias_coinciden": bool(distancias_coinciden),
             "topk_correcto": bool(topk_correcto),
             "orden_correcto": bool(orden_correcto),
@@ -367,7 +482,8 @@ def main():
     reales = list(map(str, y_q))
     metricas_mayoria = metricas_clasificacion(reales, predicciones_mayoria)
     metricas_ponderadas = metricas_clasificacion(reales, predicciones_ponderadas)
-    # Campos originales corresponden al método ponderado.
+
+    # Las métricas sin sufijo conservan el método ponderado por compatibilidad.
     metricas = {
         **metricas_ponderadas,
         **{f"{nombre}_mayoria": valor for nombre, valor in metricas_mayoria.items()},
@@ -375,6 +491,33 @@ def main():
     }
     print("\nMÉTRICAS MAYORÍA:", metricas_mayoria)
     print("MÉTRICAS PONDERADAS:", metricas_ponderadas)
+
+    # Matrices de confusión completas de 26 clases, sin alterar la búsqueda cifrada.
+    args.output_dir.mkdir(parents=True, exist_ok=True)
+    guardar_matriz_confusion(
+        reales,
+        predicciones_mayoria,
+        args.output_dir,
+        f"matriz_mayoria_n{args.db_rows}",
+    )
+    guardar_matriz_confusion(
+        reales,
+        predicciones_ponderadas,
+        args.output_dir,
+        f"matriz_ponderada_n{args.db_rows}",
+    )
+    print("\nMatrices de confusión guardadas (PNG y CSV) en:", args.output_dir.resolve())
+    if len(reales) < 26:
+        print("AVISO: hay menos de 26 consultas; muchas clases no tendrán ejemplos reales.")
+
+    distancias_validas = [
+        f["distancias_evaluadas"] for f in filas
+        if f["distancias_evaluadas"] is not None
+    ]
+    porcentajes_validos = [
+        f["porcentaje_registros_evaluados"] for f in filas
+        if f["porcentaje_registros_evaluados"] is not None
+    ]
     resumen = {
         "dataset": "Letter Recognition", "registros": args.db_rows,
         "consultas": args.queries, "k": args.k, "bits_paillier": args.key_bits,
@@ -389,7 +532,12 @@ def main():
         "tiempo_consulta_total_promedio_s": float(np.mean([f["tiempo_consulta_total_s"] for f in filas])),
         "topk_correcto_todas": all(f["topk_correcto"] for f in filas),
         "distancias_coinciden_todas": all(f["distancias_coinciden"] for f in filas),
-        "distancias_evaluadas_promedio": float(np.mean([f["distancias_evaluadas"] for f in filas])),
+        "distancias_evaluadas_promedio": (
+            float(np.mean(distancias_validas)) if distancias_validas else None
+        ),
+        "porcentaje_registros_evaluados_promedio": (
+            float(np.mean(porcentajes_validos)) if porcentajes_validos else None
+        ),
         **metricas,
         "tiempo_total_s": time.perf_counter() - inicio,
     }
@@ -415,5 +563,12 @@ def main():
     print("Resumen:", resumen)
     print("Archivos:", args.output_dir.resolve())
 
-    
-main()
+    tiempo_programa = time.perf_counter() - inicio_programa
+    print("\n TIEMPO DE EJECUCION")
+    print(f"Tiempo completo: {tiempo_programa:.4f} segundos")
+    print(f"Equivalente: {tiempo_programa / 60:.4f} minutos")
+
+
+if __name__ == "__main__":
+    main()
+

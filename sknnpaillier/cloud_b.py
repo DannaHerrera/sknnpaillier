@@ -1,4 +1,4 @@
-"""Evaluate encrypted nearest-neighbor queries using KD-tree leaf regions.
+"""Evaluate encrypted nearest-neighbor queries via hierarchical KD-tree pruning.
 Nonlinear operations use a trusted key manager in the same process.
 """
 
@@ -9,7 +9,7 @@ import time
 from dataclasses import dataclass
 from typing import Sequence
 
-from sknnpaillier.kd_tree import EncryptedKDLeaf, EncryptedKDTree
+from sknnpaillier.kd_tree import EncryptedKDNode, EncryptedKDTree
 from sknnpaillier.key_m import KeyManagementModule
 from sknnpaillier.log import get_logger
 from sknnpaillier.secure_data_t import SecureDataTransformationModule
@@ -41,7 +41,7 @@ class CloudBQueryProcessingModule:
         transformer (SecureDataTransformationModule): Encryption collaborator.
         key_manager (KeyManagementModule): Trusted nonlinear-operation provider.
         encrypted_database (Sequence[Sequence[int]] | None): Encrypted rows.
-        encrypted_kd_tree (EncryptedKDTree | None): Encrypted leaf index.
+        encrypted_kd_tree (EncryptedKDTree | None): Encrypted hierarchical index.
         last_query_stats (dict[str, int]): Counters from the last completed query.
     """
     def __init__(
@@ -76,6 +76,7 @@ class CloudBQueryProcessingModule:
             str,
             int,
         ] = {}
+        self._total_leaves = 0
 
     # RECEPCIÓN DE BD E ÍNDICE
 
@@ -113,9 +114,19 @@ class CloudBQueryProcessingModule:
         Returns:
             None: Stores the supplied index.
         """
-        self.encrypted_kd_tree = (
-            encrypted_kd_tree
-        )
+        self.encrypted_kd_tree = encrypted_kd_tree
+
+        # Contar hojas una sola vez, al recibir el índice.
+        def count_leaves(node: EncryptedKDNode) -> int:
+            if node.record_ids is not None:
+                return 1
+            return sum(
+                count_leaves(child)
+                for child in (node.left, node.right)
+                if child is not None
+            )
+
+        self._total_leaves = count_leaves(encrypted_kd_tree.root)
 
     # OPERACIONES HOMOMÓRFICAS PAILLIER
 
@@ -405,7 +416,7 @@ class CloudBQueryProcessingModule:
     def secure_point_enclosure(
         self,
         encrypted_query: Sequence[int],
-        leaf: EncryptedKDLeaf,
+        leaf: EncryptedKDNode,
     ) -> bool:
         """Check whether a query lies within a leaf region.
 
@@ -415,7 +426,7 @@ class CloudBQueryProcessingModule:
 
         Args:
             encrypted_query (Sequence[int]): Encrypted coordinates matching the leaf.
-            leaf (EncryptedKDLeaf): Region with encrypted inclusive bounds.
+            leaf (EncryptedKDNode): Region with encrypted inclusive bounds.
 
         Returns:
             bool: Whether every compared coordinate lies within its bounds.
@@ -450,7 +461,7 @@ class CloudBQueryProcessingModule:
     def encrypted_shortest_point(
         self,
         encrypted_query: Sequence[int],
-        leaf: EncryptedKDLeaf,
+        leaf: EncryptedKDNode,
     ) -> tuple[int, ...]:
         """Clamp each query coordinate to its region interval.
 
@@ -460,7 +471,7 @@ class CloudBQueryProcessingModule:
 
         Args:
             encrypted_query (Sequence[int]): Encrypted coordinates matching the leaf.
-            leaf (EncryptedKDLeaf): Region with encrypted inclusive bounds.
+            leaf (EncryptedKDNode): Region with encrypted inclusive bounds.
 
         Returns:
             tuple[int, ...]: Encrypted closest point in the region.
@@ -506,7 +517,7 @@ class CloudBQueryProcessingModule:
     def secure_region_min_distance(
         self,
         encrypted_query: Sequence[int],
-        leaf: EncryptedKDLeaf,
+        leaf: EncryptedKDNode,
     ) -> int:
         """Compute the encrypted minimum squared distance to a region.
 
@@ -516,7 +527,7 @@ class CloudBQueryProcessingModule:
 
         Args:
             encrypted_query (Sequence[int]): Encrypted coordinates matching the leaf.
-            leaf (EncryptedKDLeaf): Region with encrypted inclusive bounds.
+            leaf (EncryptedKDNode): Region with encrypted inclusive bounds.
 
         Returns:
             int: Encrypted squared distance from the query to the region.
@@ -638,7 +649,7 @@ class CloudBQueryProcessingModule:
 
     def _evaluate_leaf(
         self,
-        leaf: EncryptedKDLeaf,
+        leaf: EncryptedKDNode,
         encrypted_query: Sequence[int],
         candidates: list[_Candidate],
         k: int,
@@ -697,299 +708,116 @@ class CloudBQueryProcessingModule:
 
         return evaluations
 
-    # FASE 1: BUSCAR HOJA(S) QUE CONTIENEN q
-
-    def _find_candidate_leaves(
-        self,
-        encrypted_query: Sequence[int],
-    ) -> list[EncryptedKDLeaf]:
-        if self.encrypted_kd_tree is None:
-            raise RuntimeError(
-                "KD-tree not configured."
-            )
-
-        return [
-            leaf
-            for leaf
-            in self.encrypted_kd_tree.leaves
-            if self.secure_point_enclosure(
-                encrypted_query,
-                leaf,
-            )
-        ]
-
-    def _nearest_leaf_when_outside_root(
-        self,
-        encrypted_query: Sequence[int],
-    ) -> EncryptedKDLeaf:
-        """Select a closest leaf when the query is outside all indexed regions.
-
-        Args:
-            encrypted_query (Sequence[int]): Encrypted query coordinates.
-
-        Returns:
-            EncryptedKDLeaf: A leaf with minimum encrypted region distance.
-
-        Raises:
-            RuntimeError: If the index is missing or contains no leaves.
-        """
-        if self.encrypted_kd_tree is None:
-            raise RuntimeError(
-                "KD-tree not configured."
-            )
-
-        best_leaf = None
-        best_distance = None
-
-        for leaf in (
-            self.encrypted_kd_tree.leaves
-        ):
-            encrypted_distance = (
-                self.secure_region_min_distance(
-                    encrypted_query,
-                    leaf,
-                )
-            )
-
-            if best_leaf is None:
-                best_leaf = leaf
-                best_distance = (
-                    encrypted_distance
-                )
-                continue
-
-            if self._secure_lt(
-                encrypted_distance,
-                best_distance,
-                signed=False,
-            ):
-                best_leaf = leaf
-                best_distance = (
-                    encrypted_distance
-                )
-
-        if best_leaf is None:
-            raise RuntimeError(
-                "KD-tree not configured."
-            )
-
-        return best_leaf
-
-    # PROCESAMIENTO
+    # BÚSQUEDA JERÁRQUICA CON PODA DE SUBÁRBOLES
 
     def process_query(
         self,
         encrypted_query: Sequence[int],
         k: int,
     ) -> tuple[list[int], list[tuple[int, ...]], list[int]]:
-        """Return k neighbors ordered by squared distance and then record ID.
+        """Find exact top-k using encrypted region lower bounds.
 
-        Updates last_query_stats with leaf and record evaluation counts.
-        The caller must supply a consistent index and avoid modular score
-        wrapping; neither condition is fully validated.
-
-        Args:
-            encrypted_query (Sequence[int]): Encrypted coordinates matching the index.
-            k (int): Number of neighbors, from 1 to the attached database length.
-
-        Returns:
-            tuple[list[int], list[tuple[int, ...]], list[int]]: Three aligned lists:
-                visible record IDs, encrypted coordinate tuples, and encrypted
-                squared distances. The client must decrypt the last two lists.
-
-        Raises:
-            RuntimeError: If the database or index is missing, or a needed index has no leaves.
-            ValueError: If k is out of range or query dimensions do not match.
-            IndexError: If an inconsistent index references absent database rows.
-            ImportError: If configured Rich logging is unavailable.
-            OSError: If configured log files cannot be created.
+        Explore the most promising child first. Prune a subtree only when
+        its minimum possible distance is STRICTLY greater than the current
+        kth distance. Equality must be explored to retain record-ID tie
+        ordering. All comparisons depend on the trusted key manager.
         """
         if self.encrypted_database is None:
-            raise RuntimeError(
-                "CloudB did not receive the encrypted database."
-            )
-
+            raise RuntimeError("CloudB did not receive the encrypted database.")
         if self.encrypted_kd_tree is None:
-            raise RuntimeError(
-                "CloudB did not receive the encrypted KD-tree."
-            )
-
-        if not (
-            1
-            <= k
-            <= len(self.encrypted_database)
-        ):
-            raise ValueError(
-                "k is out of range."
-            )
-
-        if (
-            len(encrypted_query)
-            != self.encrypted_kd_tree.dimensions
-        ):
-            raise ValueError(
-                "Dimension of query is incorrect."
-            )
-
-        # 1. ENCRYPTED KD-TREE
+            raise RuntimeError("CloudB did not receive the encrypted KD-tree.")
+        if not 1 <= k <= len(self.encrypted_database):
+            raise ValueError("k is out of range.")
+        if len(encrypted_query) != self.encrypted_kd_tree.dimensions:
+            raise ValueError("Dimension of query is incorrect.")
 
         t_inicio = time.perf_counter()
-
-        initial_leaves = (
-            self._find_candidate_leaves(
-                encrypted_query
-            )
-        )
-
-        if not initial_leaves:
-            initial_leaves = [
-                self._nearest_leaf_when_outside_root(
-                    encrypted_query
-                )
-            ]
-
-        t_fase1 = time.perf_counter()
-
-        candidates: list[
-            _Candidate
-        ] = []
-
+        candidates: list[_Candidate] = []
         evaluated_ids: set[int] = set()
-        processed_leaf_ids: set[int] = set()
+        stats = {
+            "visited_nodes": 0,
+            "visited_leaves": 0,
+            "pruned_subtrees": 0,
+            "region_distance_evaluations": 0,
+            "distance_evaluations": 0,
+        }
 
-        distance_evaluations = 0
+        def region_distance(node: EncryptedKDNode) -> int:
+            stats["region_distance_evaluations"] += 1
+            return self.secure_region_min_distance(encrypted_query, node)
 
-        for leaf in initial_leaves:
-            distance_evaluations += (
-                self._evaluate_leaf(
-                    leaf,
-                    encrypted_query,
-                    candidates,
-                    k,
-                    evaluated_ids,
+        def visit(node: EncryptedKDNode, lower_bound: int | None = None) -> None:
+            # Compare with best kth *after* exploring previous siblings.
+            if len(candidates) == k:
+                if lower_bound is None:
+                    lower_bound = region_distance(node)
+                # Prune strictly greater distances, not equal distances:
+                # equal distances can still improve the ID tie-break.
+                if self._secure_lt(
+                    candidates[-1].encrypted_distance,
+                    lower_bound,
+                    signed=False,
+                ):
+                    stats["pruned_subtrees"] += 1
+                    return
+
+            stats["visited_nodes"] += 1
+            if node.record_ids is not None:
+                stats["visited_leaves"] += 1
+                stats["distance_evaluations"] += self._evaluate_leaf(
+                    node, encrypted_query, candidates, k, evaluated_ids
                 )
-            )
+                return
 
-            processed_leaf_ids.add(
-                leaf.leaf_id
-            )
+            children = [child for child in (node.left, node.right)
+                        if child is not None]
+            if not children:
+                raise ValueError("KD-tree internal node has no children.")
 
-        t_eval_inicial = time.perf_counter()
-
-        verified_leaves = 0
-        additional_leaves = 0
-
-        for leaf in (
-            self.encrypted_kd_tree.leaves
-        ):
-            if (
-                leaf.leaf_id
-                in processed_leaf_ids
+            # Order at most two children by their encrypted region distances.
+            child_bounds = [(child, region_distance(child)) for child in children]
+            if len(child_bounds) == 2 and self._secure_lt(
+                child_bounds[1][1], child_bounds[0][1], signed=False
             ):
-                continue
+                child_bounds.reverse()
 
-            verified_leaves += 1
+            for child, bound in child_bounds:
+                visit(child, bound)
 
-            # Si aún no tenemos k candidatos,
-            # necesariamente necesitamos más datos.
-            should_process = (
-                len(candidates) < k
-            )
+        visit(self.encrypted_kd_tree.root)
 
-            if not should_process:
-                encrypted_min_region_distance = (
-                    self.secure_region_min_distance(
-                        encrypted_query,
-                        leaf,
-                    )
-                )
+        if len(candidates) != k:
+            raise RuntimeError("Index did not provide k distinct records.")
 
-                encrypted_kth_distance = (
-                    candidates[
-                        -1
-                    ].encrypted_distance
-                )
-
-                should_process = (
-                    self._secure_le(
-                        encrypted_min_region_distance,
-                        encrypted_kth_distance,
-                        signed=False,
-                    )
-                )
-
-            if should_process:
-                distance_evaluations += (
-                    self._evaluate_leaf(
-                        leaf,
-                        encrypted_query,
-                        candidates,
-                        k,
-                        evaluated_ids,
-                    )
-                )
-
-                processed_leaf_ids.add(
-                    leaf.leaf_id
-                )
-
-                additional_leaves += 1
-
-        t_fase2 = time.perf_counter()
-
-        selected_ids = [
-            candidate.record_id
-            for candidate
-            in candidates[:k]
-        ]
-
-        # CloudB entrega exclusivamente resultados cifrados.
-        # Los identificadores y el patron de acceso son visibles.
+        selected_ids = [c.record_id for c in candidates]
         encrypted_neighbors = [
             tuple(self.encrypted_database[record_id])
             for record_id in selected_ids
         ]
-        encrypted_distances = [
-            candidate.encrypted_distance
-            for candidate in candidates[:k]
-        ]
+        encrypted_distances = [c.encrypted_distance for c in candidates]
+
+        # Preserve the keys expected by experimento4.py.
         self.last_query_stats = {
-            "total_leaves": len(self.encrypted_kd_tree.leaves),
-            "initial_leaves": len(initial_leaves),
-            "verified_leaves": verified_leaves,
-            "additional_leaves": additional_leaves,
-            "distance_evaluations": distance_evaluations,
+            "total_leaves": self._total_leaves,
+            "initial_leaves": stats["visited_leaves"],
+            "verified_leaves": 0,
+            "additional_leaves": 0,
+            **stats,
             "database_size": self.encrypted_kd_tree.database_size,
         }
 
         t_fin = time.perf_counter()
-
         logger = get_logger("sknn.cloudb")
         logger.debug({
-            "event": "query_phases",
+            "event": "hierarchical_query",
             "k": k,
-            "phase1_search_leaves_s": round(
-                t_fase1 - t_inicio, 6
-            ),
-            "initial_evaluation_s": round(
-                t_eval_inicial - t_fase1, 6
-            ),
-            "phase2_verification_s": round(
-                t_fase2 - t_eval_inicial, 6
-            ),
-            "results_s": round(
-                t_fin - t_fase2, 6
-            ),
+            "time_s": round(t_fin - t_inicio, 6),
             **self.last_query_stats,
         })
-
         logger.info({
             "event": "query_total",
             "k": k,
-            "evaluated_distances": distance_evaluations,
-            "time_s": round(
-                t_fin - t_inicio, 6
-            ),
+            "evaluated_distances": stats["distance_evaluations"],
+            "time_s": round(t_fin - t_inicio, 6),
         })
-
         return selected_ids, encrypted_neighbors, encrypted_distances
