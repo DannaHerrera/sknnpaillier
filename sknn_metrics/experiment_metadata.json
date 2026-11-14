@@ -1,0 +1,88 @@
+{
+  "time_unit": "seconds",
+  "settings": {
+    "key_bits": 1024,
+    "k": 3,
+    "leaf_capacity": 2,
+    "max_depth": null,
+    "scale": 1000,
+    "seed": 42,
+    "independent_variable": "baseline",
+    "independent_value": "fixed"
+  },
+  "fixed_controls": {
+    "samples": 60,
+    "features": 2,
+    "class_balance": "30/30",
+    "train_samples": 42,
+    "test_samples": 18,
+    "test_fraction": 0.3,
+    "gaussian_noise_std": 0.2,
+    "centers": [
+      [
+        0.3,
+        0.3
+      ],
+      [
+        0.7,
+        0.7
+      ]
+    ]
+  },
+  "stage_times_s": {
+    "data_generation": 0.0004665,
+    "train_test_split": 0.001302,
+    "quantize_train": 0.0002253,
+    "quantize_test": 0.0002597,
+    "key_generation": 0.1599162,
+    "module_initialization": 0.0003294,
+    "encrypted_index_setup": 5.7306682,
+    "classify_all_queries": 300.2809029,
+    "classification_metrics": 0.0119741,
+    "write_query_csv": 0.0021996
+  },
+  "total_wall_time_s_before_metadata": 306.1939505,
+  "query_time_summary_s": {
+    "cloud_query_s": {
+      "mean": 16.567861516666667,
+      "median": 16.252385699999998,
+      "min": 9.3394605,
+      "max": 24.840614
+    },
+    "decrypt_s": {
+      "mean": 0.11382916666666666,
+      "median": 0.11966465,
+      "min": 0.0772571,
+      "max": 0.1348406
+    },
+    "verify_s": {
+      "mean": 6.0722222222222224e-05,
+      "median": 6.22e-05,
+      "min": 4.28e-05,
+      "max": 0.0001036
+    },
+    "vote_s": {
+      "mean": 3.243888888888889e-05,
+      "median": 3.115e-05,
+      "min": 2.08e-05,
+      "max": 6.47e-05
+    },
+    "total_s": {
+      "mean": 16.681788233333332,
+      "median": 16.37607155,
+      "min": 9.4514682,
+      "max": 24.9289995
+    }
+  },
+  "confusion_matrix": [
+    [
+      9,
+      0
+    ],
+    [
+      1,
+      8
+    ]
+  ],
+  "accuracy": 0.9444444444444444
+}

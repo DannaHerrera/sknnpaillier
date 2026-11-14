@@ -17,6 +17,8 @@ salida_preprocesamiento/
 resultados/
 resultados_*/
 runs/
+resultados_preprocesados_n10000_h7_k10_m6/
+
 
 # Gráficas generadas
 *.png
