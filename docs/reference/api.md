@@ -11,8 +11,7 @@ mkdocstrings. Signatures are read from source, not maintained as separate text.
 | [kd_tree](kd_tree.md) | Leaf-region construction and encrypted bounds. |
 | [key_m](key_m.md) | Key parameters, key generation and trusted operations. |
 | [secure_data_t](secure_data_t.md) | Record encryption and delivery to the cloud. |
-| [utils](utils.md) | Fixed-point conversion and number-theory helpers. |
-| [config and log](configuration.md) | Security-level translation and logging configuration. |
+| [utils](utils.md) | Fixed-point conversion, security-level configuration and number-theory helpers. |
 
 Constructor parameters appear with class documentation. Each callable describes
 its arguments and return value; exception sections describe implemented checks
