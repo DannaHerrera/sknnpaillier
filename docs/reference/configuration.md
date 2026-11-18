@@ -5,7 +5,7 @@
 This function translates explicit settings only. It does not read environment
 variables, generate keys or change the key-manager constructor.
 
-::: sknnpaillier.config
+::: sknnpaillier.utils
     options:
       members:
         - resolve_key_bits
