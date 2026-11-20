@@ -53,3 +53,6 @@ Thumbs.db
 
 #Experimentos de prueba
 Experimentos/
+
+#Resultados de pruebas
+sknn_metrics_database_s/

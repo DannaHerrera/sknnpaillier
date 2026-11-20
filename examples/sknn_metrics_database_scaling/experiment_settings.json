@@ -1,0 +1,22 @@
+{
+  "database_sizes": [
+    3,
+    17,
+    33,
+    50,
+    66
+  ],
+  "test_fraction": 0.3,
+  "test_count_rule": "ceil(0.3 * database_size)",
+  "dataset_separation": "independent synthetic database and queries",
+  "k": 3,
+  "leaf_capacity": 2,
+  "max_depth": null,
+  "scale": 1000,
+  "seed": 42,
+  "noise_std": 0.2,
+  "key_bits": 1024,
+  "repetitions": 3,
+  "timing_unit": "seconds",
+  "note": "No se mide KD-tree por separado. El tiempo de preparación del índice cifrado incluye las operaciones internas de send_database_to_cloud; no es un tiempo exclusivo de cifrado."
+}
